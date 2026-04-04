@@ -10,7 +10,6 @@ import { TrainingPanel } from './features/training';
 import { hasTrainingNodes, normalizeProjectGraph } from './graph/graphUtils';
 import { inferShapes, validateGraph, validateTrainingGraph } from './services';
 import { useAppStore } from './store';
-import type { ProjectGraph } from './types';
 
 import './App.css';
 
@@ -50,19 +49,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
 function hasTextSelection(): boolean {
   const selection = window.getSelection();
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim().length > 0);
-}
-
-function isProjectGraph(value: unknown): value is ProjectGraph {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<ProjectGraph>;
-  return (
-    typeof candidate.version === 'string' &&
-    Array.isArray(candidate.nodes) &&
-    Array.isArray(candidate.edges)
-  );
 }
 
 const App: React.FC = () => {
@@ -205,16 +191,13 @@ const App: React.FC = () => {
           const result = loadEvent.target?.result;
           const parsed = typeof result === 'string' ? JSON.parse(result) : null;
 
-          if (isProjectGraph(parsed)) {
-            const normalizedProject = normalizeProjectGraph(parsed);
-            if (normalizedProject) {
-              setProject(normalizedProject);
-            } else {
-              alert('Invalid project file format.');
-            }
-          } else {
+          const normalizedProject = normalizeProjectGraph(parsed);
+          if (!normalizedProject) {
             alert('Invalid project file format.');
+            return;
           }
+
+          setProject(normalizedProject);
         } catch {
           alert('Failed to parse the selected project file.');
         }

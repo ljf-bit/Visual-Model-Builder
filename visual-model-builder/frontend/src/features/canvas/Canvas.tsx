@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -17,20 +17,15 @@ import {
   type NodeProps,
   Position,
   useReactFlow,
+  useNodesInitialized,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { getNextNodeId } from '../../graph/graphUtils';
 import { getNodeBehavior } from '../../registry';
 import { nodeRegistry } from '../../registry/nodeRegistry';
 import { useAppStore } from '../../store';
 import type { GraphEdge, GraphNode, GraphNodeData } from '../../types';
-
-let nodeIdCounter = 0;
-
-function generateNodeId(type: string): string {
-  nodeIdCounter += 1;
-  return `${type}_${nodeIdCounter}`;
-}
 
 const GenericNode: React.FC<NodeProps> = ({ data, selected }) => {
   const behavior = getNodeBehavior(String(data.type ?? data.label));
@@ -84,8 +79,13 @@ const GenericNode: React.FC<NodeProps> = ({ data, selected }) => {
 
 const nodeTypes = Object.fromEntries(Object.keys(nodeRegistry).map((key) => [key, GenericNode]));
 
+function isFinitePosition(position: GraphNode['position']): boolean {
+  return Number.isFinite(position.x) && Number.isFinite(position.y);
+}
+
 const Canvas: React.FC = () => {
-  const { screenToFlowPosition } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   const selectedNodeId = useAppStore((state) => state.selectedNodeId);
   const setSelectedNodeId = useAppStore((state) => state.setSelectedNodeId);
   const project = useAppStore((state) => state.project);
@@ -94,12 +94,42 @@ const Canvas: React.FC = () => {
   const setStoreEdges = useAppStore((state) => state.setEdges);
   const syncNodesFromCanvas = useAppStore((state) => state.syncNodesFromCanvas);
   const syncEdgesFromCanvas = useAppStore((state) => state.syncEdgesFromCanvas);
+  const previousNodeSignatureRef = useRef('');
 
   const nodes = project.nodes.map((node) => ({
     ...node,
     selected: node.id === selectedNodeId,
   })) as Node<GraphNodeData>[];
   const edges = project.edges as Edge[];
+  const nodeSignature = useMemo(
+    () => project.nodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join('|'),
+    [project.nodes],
+  );
+
+  useEffect(() => {
+    if (!nodesInitialized || project.nodes.length === 0) {
+      if (project.nodes.length === 0) {
+        previousNodeSignatureRef.current = '';
+      }
+      return;
+    }
+
+    if (previousNodeSignatureRef.current === nodeSignature) {
+      return;
+    }
+
+    previousNodeSignatureRef.current = nodeSignature;
+
+    const frameId = window.requestAnimationFrame(() => {
+      void fitView({
+        padding: 0.2,
+        duration: 180,
+        includeHiddenNodes: true,
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [fitView, nodeSignature, nodesInitialized, project.nodes.length]);
 
   const shouldRecordNodeHistory = (changes: NodeChange[]) =>
     changes.some((change) => {
@@ -117,33 +147,56 @@ const Canvas: React.FC = () => {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const nextNodes = applyNodeChanges(changes, nodes) as unknown as GraphNode[];
-      if (shouldRecordNodeHistory(changes)) {
+      const relevantChanges = changes.filter(
+        (change) =>
+          change.type === 'remove'
+          || change.type === 'replace'
+          || change.type === 'add'
+          || change.type === 'position',
+      );
+
+      if (relevantChanges.length === 0) {
+        return;
+      }
+
+      const latestNodes = useAppStore.getState().project.nodes as unknown as Node[];
+      const nextNodes = applyNodeChanges(relevantChanges, latestNodes) as unknown as GraphNode[];
+      if (shouldRecordNodeHistory(relevantChanges)) {
         setStoreNodes(nextNodes);
         return;
       }
       syncNodesFromCanvas(nextNodes);
     },
-    [nodes, setStoreNodes, syncNodesFromCanvas],
+    [setStoreNodes, syncNodesFromCanvas],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      const nextEdges = applyEdgeChanges(changes, edges) as unknown as GraphEdge[];
-      if (shouldRecordEdgeHistory(changes)) {
+      const relevantChanges = changes.filter(
+        (change) => change.type === 'remove' || change.type === 'replace' || change.type === 'add',
+      );
+
+      if (relevantChanges.length === 0) {
+        return;
+      }
+
+      const latestEdges = useAppStore.getState().project.edges as unknown as Edge[];
+      const nextEdges = applyEdgeChanges(relevantChanges, latestEdges) as unknown as GraphEdge[];
+      if (shouldRecordEdgeHistory(relevantChanges)) {
         setStoreEdges(nextEdges);
         return;
       }
       syncEdgesFromCanvas(nextEdges);
     },
-    [edges, setStoreEdges, syncEdgesFromCanvas],
+    [setStoreEdges, syncEdgesFromCanvas],
   );
 
   const onConnect = useCallback(
     (params: Connection) => {
-      setStoreEdges(addEdge(params, edges) as unknown as GraphEdge[]);
+      const latestEdges = useAppStore.getState().project.edges as unknown as Edge[];
+      setStoreEdges(addEdge(params, latestEdges) as unknown as GraphEdge[]);
     },
-    [edges, setStoreEdges],
+    [setStoreEdges],
   );
 
   const onNodeClick = useCallback(
@@ -175,15 +228,23 @@ const Canvas: React.FC = () => {
         return;
       }
 
+      const latestNodes = useAppStore.getState().project.nodes;
+
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
+      const safePosition = isFinitePosition(position)
+        ? position
+        : {
+            x: 80 + latestNodes.length * 40,
+            y: 80 + latestNodes.length * 40,
+          };
 
       const newNode: GraphNode = {
-        id: generateNodeId(nodeType),
+        id: getNextNodeId(nodeType, latestNodes),
         type: nodeType,
-        position,
+        position: safePosition,
         data: {
           label: behavior.template.displayName,
           type: behavior.template.type,
@@ -195,8 +256,9 @@ const Canvas: React.FC = () => {
       };
 
       addNode(newNode);
+      setSelectedNodeId(newNode.id);
     },
-    [addNode, screenToFlowPosition],
+    [addNode, screenToFlowPosition, setSelectedNodeId],
   );
 
   return (
@@ -212,7 +274,6 @@ const Canvas: React.FC = () => {
         onPaneClick={onPaneClick}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        fitView
       >
         <Background />
         <Controls />

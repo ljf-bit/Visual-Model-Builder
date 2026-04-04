@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+import { getNextNodeId, normalizeProjectGraph } from '../graph/graphUtils';
 import type {
   GeneratedCodeMode,
   GraphEdge,
@@ -216,20 +217,6 @@ function createProjectChangeState(
   };
 }
 
-function generateNodeId(type: string, nodes: GraphNode[]): string {
-  const pattern = new RegExp(`^${type}_(\\d+)$`);
-  let maxSuffix = 0;
-
-  for (const node of nodes) {
-    const match = node.id.match(pattern);
-    if (match) {
-      maxSuffix = Math.max(maxSuffix, Number(match[1]));
-    }
-  }
-
-  return `${type}_${maxSuffix + 1}`;
-}
-
 function boxesOverlap(a: GraphNode['position'], b: GraphNode['position']): boolean {
   return !(
     a.x + NODE_COLLISION_WIDTH + NODE_COLLISION_GAP <= b.x ||
@@ -278,32 +265,44 @@ export const useAppStore = create<AppState>((set, get) => ({
   historyFuture: [],
 
   setProject: (project) =>
-    set({
-      project: {
-        ...project,
-        nodes: sanitizeNodes(project.nodes),
-        edges: sanitizeEdges(project.edges),
-      },
-      isDirty: false,
-      selectedNodeId: null,
-      copiedNode: null,
-      clipboardPasteCount: 0,
-      generatedCodeByMode: createEmptyGeneratedCode(),
-      globalErrors: [],
-      trainingResult: null,
-      trainingDiagnostics: null,
-      historyPast: [],
-      historyFuture: [],
+    set(() => {
+      const normalizedProject = normalizeProjectGraph(project) ?? createEmptyProject(project.metadata.name);
+
+      return {
+        project: {
+          ...normalizedProject,
+          nodes: sanitizeNodes(normalizedProject.nodes),
+          edges: sanitizeEdges(normalizedProject.edges),
+        },
+        isDirty: false,
+        selectedNodeId: null,
+        copiedNode: null,
+        clipboardPasteCount: 0,
+        generatedCodeByMode: createEmptyGeneratedCode(),
+        globalErrors: [],
+        trainingResult: null,
+        trainingDiagnostics: null,
+        historyPast: [],
+        historyFuture: [],
+      };
     }),
 
   addNode: (node) =>
-    set((s) =>
-      createProjectChangeState(s, {
+    set((s) => {
+      const nodeId = s.project.nodes.some((existingNode) => existingNode.id === node.id)
+        ? getNextNodeId(node.type, s.project.nodes)
+        : node.id;
+      const nextNode = sanitizeNode({
+        ...node,
+        id: nodeId,
+      });
+
+      return createProjectChangeState(s, {
         ...s.project,
-        nodes: [...s.project.nodes, node],
+        nodes: [...s.project.nodes, nextNode],
         metadata: { ...s.project.metadata, updatedAt: new Date().toISOString() },
-      }),
-    ),
+      });
+    }),
 
   removeNode: (nodeId) =>
     set((s) =>
@@ -415,7 +414,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const copiedNodeData = cloneNode(state.copiedNode);
     const newNode: GraphNode = {
       ...copiedNodeData,
-      id: generateNodeId(state.copiedNode.type, state.project.nodes),
+      id: getNextNodeId(state.copiedNode.type, state.project.nodes),
       position: nextPosition,
       data: {
         ...copiedNodeData.data,
