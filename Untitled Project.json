@@ -1,0 +1,450 @@
+{
+  "version": "2.0.0",
+  "metadata": {
+    "name": "Untitled Project",
+    "createdAt": "2026-04-03T08:56:23.908Z",
+    "updatedAt": "2026-04-03T09:02:52.431Z"
+  },
+  "nodes": [
+    {
+      "id": "Input_1",
+      "type": "Input",
+      "position": {
+        "x": 640.4999847412109,
+        "y": 234.99999618530273
+      },
+      "data": {
+        "label": "Input",
+        "type": "Input",
+        "params": {
+          "inputShape": [
+            1,
+            28,
+            28
+          ]
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": [
+          1,
+          28,
+          28
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Dataset_2",
+      "type": "Dataset",
+      "position": {
+        "x": 571.9999771118164,
+        "y": 31.216659545898438
+      },
+      "data": {
+        "label": "Dataset",
+        "type": "Dataset",
+        "params": {
+          "datasetName": "FakeData",
+          "trainSplit": true,
+          "imageSize": 28,
+          "numClasses": 10
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false
+    },
+    {
+      "id": "DataLoader_3",
+      "type": "DataLoader",
+      "position": {
+        "x": 624.4999771118164,
+        "y": 145.71665573120117
+      },
+      "data": {
+        "label": "DataLoader",
+        "type": "DataLoader",
+        "params": {
+          "batchSize": 32,
+          "shuffle": true,
+          "numWorkers": 0
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false
+    },
+    {
+      "id": "Output_4",
+      "type": "Output",
+      "position": {
+        "x": 801.50106698744,
+        "y": 733.3684839893882
+      },
+      "data": {
+        "label": "Output",
+        "type": "Output",
+        "params": {},
+        "inferredInputShape": [
+          10,
+          1
+        ],
+        "inferredOutputShape": [
+          10,
+          1
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Conv2d_5",
+      "type": "Conv2d",
+      "position": {
+        "x": 706.3422646760856,
+        "y": 325.27456010771124
+      },
+      "data": {
+        "label": "Conv2d",
+        "type": "Conv2d",
+        "params": {
+          "in_channels": 1,
+          "out_channels": 16,
+          "kernel_size": 3,
+          "stride": 1,
+          "padding": 0
+        },
+        "inferredInputShape": [
+          1,
+          28,
+          28
+        ],
+        "inferredOutputShape": [
+          16,
+          26,
+          26
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false
+    },
+    {
+      "id": "Conv2d_6",
+      "type": "Conv2d",
+      "position": {
+        "x": 772.9166495983429,
+        "y": 428.03067596597805
+      },
+      "data": {
+        "label": "Conv2d",
+        "type": "Conv2d",
+        "params": {
+          "in_channels": 16,
+          "out_channels": 10,
+          "kernel_size": 3,
+          "stride": 1,
+          "padding": 0
+        },
+        "inferredInputShape": [
+          16,
+          26,
+          26
+        ],
+        "inferredOutputShape": [
+          10,
+          24,
+          24
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false
+    },
+    {
+      "id": "Flatten_7",
+      "type": "Flatten",
+      "position": {
+        "x": 761.33849569882,
+        "y": 534.6760484046071
+      },
+      "data": {
+        "label": "Flatten",
+        "type": "Flatten",
+        "params": {
+          "start_dim": 1,
+          "end_dim": -1
+        },
+        "inferredInputShape": [
+          10,
+          24,
+          24
+        ],
+        "inferredOutputShape": [
+          10,
+          576
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "ReLU_8",
+      "type": "ReLU",
+      "position": {
+        "x": 787.3893419727467,
+        "y": 612.8285872263875
+      },
+      "data": {
+        "label": "ReLU",
+        "type": "ReLU",
+        "params": {
+          "inplace": true
+        },
+        "inferredInputShape": [
+          10,
+          576
+        ],
+        "inferredOutputShape": [
+          10,
+          576
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false
+    },
+    {
+      "id": "Linear_9",
+      "type": "Linear",
+      "position": {
+        "x": 803.3093035845909,
+        "y": 680.8502413860854
+      },
+      "data": {
+        "label": "Linear",
+        "type": "Linear",
+        "params": {
+          "in_features": 576,
+          "out_features": 1,
+          "bias": true
+        },
+        "inferredInputShape": [
+          10,
+          576
+        ],
+        "inferredOutputShape": [
+          10,
+          1
+        ],
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Loss_10",
+      "type": "Loss",
+      "position": {
+        "x": 797.2085437331076,
+        "y": 794.5911147521566
+      },
+      "data": {
+        "label": "Loss",
+        "type": "Loss",
+        "params": {
+          "lossType": "CrossEntropyLoss"
+        },
+        "inferredInputShape": [
+          10,
+          1
+        ],
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Optimizer_11",
+      "type": "Optimizer",
+      "position": {
+        "x": 590.9726773978537,
+        "y": 781.5656916151931
+      },
+      "data": {
+        "label": "Optimizer",
+        "type": "Optimizer",
+        "params": {
+          "optimizerType": "Adam",
+          "lr": 0.001,
+          "weightDecay": 0,
+          "momentum": 0.9
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Metric_12",
+      "type": "Metric",
+      "position": {
+        "x": 1018.6407370614854,
+        "y": 797.4856532270373
+      },
+      "data": {
+        "label": "Metric",
+        "type": "Metric",
+        "params": {
+          "metricType": "Accuracy"
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "Trainer_13",
+      "type": "Trainer",
+      "position": {
+        "x": 837.7320823814382,
+        "y": 934.9762307838732
+      },
+      "data": {
+        "label": "Trainer",
+        "type": "Trainer",
+        "params": {
+          "epochs": 2,
+          "device": "cpu",
+          "logInterval": 1,
+          "validateEveryEpoch": false
+        },
+        "inferredInputShape": null,
+        "inferredOutputShape": null,
+        "errors": []
+      },
+      "measured": {
+        "width": 176,
+        "height": 39
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "Dataset_2",
+      "target": "DataLoader_3",
+      "id": "xy-edge__Dataset_2-DataLoader_3"
+    },
+    {
+      "source": "DataLoader_3",
+      "target": "Input_1",
+      "id": "xy-edge__DataLoader_3-Input_1"
+    },
+    {
+      "source": "Input_1",
+      "target": "Conv2d_5",
+      "id": "xy-edge__Input_1-Conv2d_5"
+    },
+    {
+      "source": "Conv2d_5",
+      "target": "Conv2d_6",
+      "id": "xy-edge__Conv2d_5-Conv2d_6"
+    },
+    {
+      "source": "Conv2d_6",
+      "target": "Flatten_7",
+      "id": "xy-edge__Conv2d_6-Flatten_7"
+    },
+    {
+      "source": "Flatten_7",
+      "target": "ReLU_8",
+      "id": "xy-edge__Flatten_7-ReLU_8"
+    },
+    {
+      "source": "ReLU_8",
+      "target": "Linear_9",
+      "id": "xy-edge__ReLU_8-Linear_9"
+    },
+    {
+      "source": "Linear_9",
+      "target": "Output_4",
+      "id": "xy-edge__Linear_9-Output_4",
+      "selected": false
+    },
+    {
+      "source": "Output_4",
+      "target": "Loss_10",
+      "id": "xy-edge__Output_4-Loss_10"
+    },
+    {
+      "source": "Optimizer_11",
+      "target": "Trainer_13",
+      "id": "xy-edge__Optimizer_11-Trainer_13"
+    },
+    {
+      "source": "Metric_12",
+      "target": "Trainer_13",
+      "id": "xy-edge__Metric_12-Trainer_13"
+    },
+    {
+      "source": "Loss_10",
+      "target": "Trainer_13",
+      "id": "xy-edge__Loss_10-Trainer_13"
+    }
+  ]
+}

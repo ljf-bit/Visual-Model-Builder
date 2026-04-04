@@ -1,0 +1,56 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment and local overrides
+.env
+.env.*
+*.local
+
+# Python caches and tooling
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Frontend build and package manager output
+visual-model-builder/frontend/node_modules/
+visual-model-builder/frontend/dist/
+visual-model-builder/frontend/dist-ssr/
+visual-model-builder/frontend/.vite/
+visual-model-builder/frontend/.vite-temp/
+
+# Backend training artifacts
+visual-model-builder/backend/training_runs/
+*.pt
+*.pth
+*.ckpt
+
+# Local tool state
+.playwright-cli/
+
+# Temporary files
+*.tmp
+*.temp
