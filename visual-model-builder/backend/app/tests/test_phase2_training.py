@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -275,11 +276,17 @@ def test_run_training_returns_epoch_metrics(monkeypatch):
     assert len(data["logs"]) == 1
     assert data["logs"][0]["loss"] >= 0
     assert data["logs"][0]["accuracy"] is not None
+    assert data["diagnostics"]["ok"] is True
+    assert "summary" in data["diagnostics"]
+    assert "trendSummary" in data["insights"]
     assert data["trainingMetadata"]["projectName"] == "Phase 2 Training Example"
     assert data["trainingMetadata"]["datasetUsed"] == "FakeData"
     assert Path(data["trainingMetadata"]["weightsPath"]).exists()
     assert Path(data["trainingMetadata"]["logsPath"]).exists()
     assert Path(data["trainingMetadata"]["summaryPath"]).exists()
+    summary_payload = json.loads(Path(data["trainingMetadata"]["summaryPath"]).read_text(encoding="utf-8"))
+    assert summary_payload["diagnostics"]["summary"]
+    assert summary_payload["insights"]["qualitySummary"]
 
 
 def test_run_training_accepts_sample_relative_flatten_dimensions(monkeypatch):
@@ -312,3 +319,65 @@ def test_validate_training_graph_reports_missing_trainer():
     data = response.json()
     assert data["ok"] is False
     assert any("Trainer" in message for message in data["globalErrors"])
+
+
+def test_diagnose_training_graph_returns_teaching_oriented_summary():
+    response = client.post("/diagnose-training-graph", json=build_phase2_payload())
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "summary" in data
+    assert "warnings" in data
+    assert "suggestions" in data
+    assert data["graphStats"]["hasTrainer"] is True
+    assert data["modelStats"]["parameterCount"] > 0
+    assert data["trainingStats"]["datasetName"] == "FakeData"
+    assert any("epoch" in message.lower() for message in data["warnings"])
+
+
+def test_diagnose_training_graph_flags_output_class_mismatch():
+    response = client.post(
+        "/diagnose-training-graph",
+        json=build_phase2_payload(linear_out_features=1),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is False
+    assert any("classes" in message.lower() for message in data["errors"])
+    assert any("Linear" in message or "out_features" in message for message in data["suggestions"])
+
+
+def test_diagnose_training_graph_respects_flatten_runtime_class_normalization():
+    response = client.post(
+        "/diagnose-training-graph",
+        json=build_phase2_payload(
+            flatten_start_dim=1,
+            linear_in_features=576,
+            linear_out_features=1,
+            use_two_convs=True,
+        ),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["modelStats"]["outputClasses"] == 10
+    assert not any("predicts 1 classes" in message for message in data["errors"])
+
+
+def test_run_training_blocks_when_diagnostics_fail():
+    response = client.post(
+        "/run-training",
+        json=build_phase2_payload(linear_out_features=1),
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is False
+    assert data["status"] == "diagnostics_failed"
+    assert data["logs"] == []
+    assert data["trainingMetadata"] is None
+    assert data["diagnostics"]["ok"] is False
+    assert data["insights"]["failureExplanation"]

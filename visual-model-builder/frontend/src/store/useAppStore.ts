@@ -10,7 +10,14 @@
  */
 
 import { create } from 'zustand';
-import type { GeneratedCodeMode, GraphEdge, GraphNode, ProjectGraph, RunTrainingResponse } from '../types';
+import type {
+  GeneratedCodeMode,
+  GraphEdge,
+  GraphNode,
+  ProjectGraph,
+  RunTrainingResponse,
+  TrainingDiagnosticsResponse,
+} from '../types';
 
 // ============================================================
 // State Shape
@@ -37,6 +44,9 @@ export interface AppState {
 
   /** Latest training execution result */
   trainingResult: RunTrainingResponse | null;
+
+  /** Latest training diagnostics result */
+  trainingDiagnostics: TrainingDiagnosticsResponse | null;
 
   /** Whether the project has unsaved changes */
   isDirty: boolean;
@@ -99,6 +109,9 @@ export interface AppState {
 
   /** Set latest training result */
   setTrainingResult: (result: RunTrainingResponse | null) => void;
+
+  /** Set latest training diagnostics */
+  setTrainingDiagnostics: (diagnostics: TrainingDiagnosticsResponse | null) => void;
 
   /** Sync backend feedback into nodes and reset dirty flag */
   setRemoteFeedback: (valRes: import('../types').ValidateGraphResponse, shapeRes: import('../types').InferShapesResponse) => void;
@@ -197,6 +210,7 @@ function createProjectChangeState(
     historyFuture: [],
     generatedCodeByMode: createEmptyGeneratedCode(),
     trainingResult: null,
+    trainingDiagnostics: null,
     isDirty: true,
     ...overrides,
   };
@@ -258,6 +272,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   generatedCodeByMode: createEmptyGeneratedCode(),
   globalErrors: [],
   trainingResult: null,
+  trainingDiagnostics: null,
   isDirty: false,
   historyPast: [],
   historyFuture: [],
@@ -276,6 +291,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       generatedCodeByMode: createEmptyGeneratedCode(),
       globalErrors: [],
       trainingResult: null,
+      trainingDiagnostics: null,
       historyPast: [],
       historyFuture: [],
     }),
@@ -462,7 +478,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setTrainingResult: (result) => set({ trainingResult: result }),
 
-    setRemoteFeedback: (valRes, shapeRes) => set((s) => {
+  setTrainingDiagnostics: (diagnostics) => set({ trainingDiagnostics: diagnostics }),
+
+  setRemoteFeedback: (valRes, shapeRes) => set((s) => {
     const updatedNodes = s.project.nodes.map(node => {
         const shapeData = shapeRes.nodes[node.id];
         const valErrors = valRes.nodeErrors[node.id] || [];
@@ -487,6 +505,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
         globalErrors: valRes.globalErrors,
         trainingResult: s.trainingResult,
+        trainingDiagnostics: s.trainingDiagnostics,
         isDirty: false
     };
   }),
@@ -501,6 +520,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     generatedCodeByMode: createEmptyGeneratedCode(),
     globalErrors: [],
     trainingResult: null,
+    trainingDiagnostics: null,
     isDirty: false,
     historyPast: [],
     historyFuture: [],

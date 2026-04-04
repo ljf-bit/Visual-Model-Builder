@@ -635,6 +635,51 @@ html, body, #root {
   font-size: var(--font-size-xs);
 }
 
+.training-panel-diagnostics-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+}
+
+.training-panel-diagnostics-banner.ok {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.training-panel-diagnostics-banner.warning {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.training-panel-diagnostics-banner.error {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.training-panel-diagnostics-banner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.training-panel-notice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.training-panel-notice-list span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .training-panel-errors {
   display: flex;
   flex-direction: column;
@@ -678,6 +723,21 @@ html, body, #root {
   border: 1px solid var(--color-error);
   color: #fecaca;
   font-size: var(--font-size-xs);
+}
+
+.training-panel-warning {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fde68a;
+  font-size: var(--font-size-xs);
+}
+
+.training-panel-warning.runtime {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #bae6fd;
 }
 
 .training-panel-evidence {
@@ -810,6 +870,47 @@ html, body, #root {
 .training-panel-empty {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+}
+
+.training-panel-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.training-panel-analysis-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+}
+
+.training-panel-bullet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.training-panel-bullet-item {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  padding-left: 14px;
+  position: relative;
+}
+
+.training-panel-bullet-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
 }
 
 /* ============================================================

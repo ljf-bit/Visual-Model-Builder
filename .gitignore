@@ -44,6 +44,7 @@ visual-model-builder/frontend/.vite-temp/
 
 # Backend training artifacts
 visual-model-builder/backend/training_runs/
+visual-model-builder/backend/.test_training_runs/
 *.pt
 *.pth
 *.ckpt

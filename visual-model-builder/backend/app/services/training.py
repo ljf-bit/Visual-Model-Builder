@@ -129,8 +129,35 @@ def get_input_shape(ir_graph: IRGraph) -> list[int]:
     return [1, 28, 28]
 
 
-def get_num_classes(ir_graph: IRGraph) -> int:
-    """Infer classifier output size from the last Linear layer."""
+def _normalize_sample_output_shape(output_shape: list[int] | None) -> list[int] | None:
+    """Mirror runtime class-logit normalization on sample-relative shapes."""
+
+    if not output_shape:
+        return output_shape
+
+    normalized_shape = list(output_shape)
+    while len(normalized_shape) > 1 and normalized_shape[-1] == 1:
+        normalized_shape.pop()
+    return normalized_shape
+
+
+def get_num_classes(ir_graph: IRGraph, node_results: dict[str, Any] | None = None) -> int:
+    """Infer effective classifier output size after runtime normalization semantics."""
+
+    components = resolve_training_components(ir_graph)
+    output_node = components.output_node
+    resolved_node_results = node_results
+
+    if resolved_node_results is None:
+        from app.services.shape_infer import infer_graph_shapes
+
+        resolved_node_results = infer_graph_shapes(ir_graph)
+
+    if output_node and output_node.node_id in resolved_node_results:
+        output_shape = resolved_node_results[output_node.node_id].output_shape
+        normalized_output_shape = _normalize_sample_output_shape(output_shape)
+        if normalized_output_shape:
+            return int(normalized_output_shape[0])
 
     linear_nodes = [node for node in get_model_nodes_in_order(ir_graph) if node.op == "Linear"]
     if linear_nodes:
@@ -370,6 +397,8 @@ def _persist_training_artifacts(
     logs: list[dict[str, float | int | None]],
     metadata: TrainingRunMetadataPayload,
     warnings: list[str],
+    diagnostics: dict[str, object] | None = None,
+    insights: dict[str, object] | None = None,
 ) -> TrainingRunMetadataPayload:
     """Persist weights and JSON summaries for a completed run."""
 
@@ -392,6 +421,8 @@ def _persist_training_artifacts(
                 "status": "completed",
                 "warnings": warnings,
                 "logs": logs,
+                "diagnostics": diagnostics,
+                "insights": insights,
                 "trainingMetadata": {
                     **asdict(metadata),
                     "run_directory": str(run_directory.resolve()),
@@ -416,7 +447,8 @@ def _persist_training_artifacts(
 def run_training(
     ir_graph: IRGraph,
     project_name: str = "Untitled Project",
-) -> tuple[str, list[dict[str, float | int | None]], list[str], dict[str, object] | None]:
+    diagnostics_payload: Any | None = None,
+) -> tuple[str, list[dict[str, float | int | None]], list[str], dict[str, object] | None, dict[str, object] | None]:
     """Execute the minimal Phase 2 training loop."""
 
     torch, nn, _, _, _, _ = _load_torch_runtime()
@@ -508,9 +540,26 @@ def run_training(
         summary_path="",
     )
 
+    from app.services.diagnostics import build_training_insights
+
+    insights_payload = build_training_insights(
+        diagnostics=diagnostics_payload,
+        logs=logs,
+        status="completed",
+        runtime_messages=warnings,
+        training_metadata=asdict(metadata),
+    )
+
     try:
-        metadata = _persist_training_artifacts(model, logs, metadata, warnings)
+        metadata = _persist_training_artifacts(
+            model,
+            logs,
+            metadata,
+            warnings,
+            diagnostics=diagnostics_payload.model_dump(by_alias=True) if diagnostics_payload is not None else None,
+            insights=insights_payload.model_dump(by_alias=True),
+        )
     except Exception as exc:
         warnings.append(f"Training artifacts could not be fully persisted: {exc}")
 
-    return "completed", logs, warnings, asdict(metadata)
+    return "completed", logs, warnings, asdict(metadata), insights_payload.model_dump(by_alias=True)

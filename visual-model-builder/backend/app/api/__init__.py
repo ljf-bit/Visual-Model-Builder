@@ -99,9 +99,14 @@ from app.schemas.responses import (
     GenerateCodeResponse,
     InferShapesResponse,
     RunTrainingResponse,
+    TrainingDiagnosticsResponse,
     ValidateGraphResponse,
 )
 from app.services.codegen import generate_code as do_generate_code, generate_model_code as do_generate_model_code
+from app.services.diagnostics import (
+    build_training_insights,
+    diagnose_training_graph as do_diagnose_training_graph,
+)
 from app.services.graph_ir import project_to_ir
 from app.services.shape_infer import infer_graph_shapes
 from app.services.training import run_training as do_run_training
@@ -185,22 +190,43 @@ async def generate_training_code(request: ProjectRequest):
     return GenerateCodeResponse(ok=True, code=do_generate_code(ir_graph, force_training=True), errors=[])
 
 
+@router.post("/diagnose-training-graph", response_model=TrainingDiagnosticsResponse)
+async def diagnose_training_graph(request: ProjectRequest):
+    """Return teaching-oriented diagnostics for the training graph."""
+
+    ir_graph = project_to_ir(request.project)
+    return do_diagnose_training_graph(ir_graph)
+
+
 @router.post("/run-training", response_model=RunTrainingResponse)
 async def run_training(request: ProjectRequest):
     """Execute the minimal synchronous Phase 2 training loop."""
 
     ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph, require_training=True)
-    node_results = infer_graph_shapes(ir_graph)
-    all_errors = _collect_errors(global_errors, node_errors, node_results)
+    diagnostics = do_diagnose_training_graph(ir_graph)
 
-    if all_errors:
-        return RunTrainingResponse(ok=False, status="validation_failed", logs=[], errors=all_errors, training_metadata=None)
+    if not diagnostics.ok:
+        return RunTrainingResponse(
+            ok=False,
+            status="diagnostics_failed",
+            logs=[],
+            errors=diagnostics.errors,
+            diagnostics=diagnostics,
+            insights=build_training_insights(
+                diagnostics=diagnostics,
+                logs=[],
+                status="diagnostics_failed",
+                runtime_messages=diagnostics.errors,
+                training_metadata=None,
+            ),
+            training_metadata=None,
+        )
 
     try:
-        status, logs, warnings, training_metadata = do_run_training(
+        status, logs, warnings, training_metadata, insights = do_run_training(
             ir_graph,
             project_name=request.project.metadata.name,
+            diagnostics_payload=diagnostics,
         )
     except RuntimeError as exc:
         return RunTrainingResponse(
@@ -208,6 +234,14 @@ async def run_training(request: ProjectRequest):
             status="runtime_unavailable",
             logs=[],
             errors=[str(exc)],
+            diagnostics=diagnostics,
+            insights=build_training_insights(
+                diagnostics=diagnostics,
+                logs=[],
+                status="runtime_unavailable",
+                runtime_messages=[str(exc)],
+                training_metadata=None,
+            ),
             training_metadata=None,
         )
 
@@ -216,5 +250,7 @@ async def run_training(request: ProjectRequest):
         status=status,
         logs=logs,
         errors=warnings,
+        diagnostics=diagnostics,
+        insights=insights,
         training_metadata=training_metadata,
     )

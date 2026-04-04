@@ -5,5 +5,6 @@ export {
   generateCode,
   validateTrainingGraph,
   generateTrainingCode,
+  diagnoseTrainingGraph,
   runTraining,
 } from './api';

@@ -9,6 +9,7 @@ import type {
   GenerateCodeResponse,
   InferShapesResponse,
   ProjectGraph,
+  TrainingDiagnosticsResponse,
   RunTrainingResponse,
   ValidateGraphResponse,
 } from '../types';
@@ -72,4 +73,9 @@ export async function generateTrainingCode(project: ProjectGraph): Promise<Gener
 /** Execute the Phase 2 training loop */
 export async function runTraining(project: ProjectGraph): Promise<RunTrainingResponse> {
   return post('/run-training', { project });
+}
+
+/** Diagnose a training graph before running it */
+export async function diagnoseTrainingGraph(project: ProjectGraph): Promise<TrainingDiagnosticsResponse> {
+  return post('/diagnose-training-graph', { project });
 }

@@ -165,11 +165,77 @@ export interface TrainingRunMetadata {
   summaryPath: string;
 }
 
+/** Structural stats returned by training diagnostics */
+export interface TrainingGraphStats {
+  totalNodes: number;
+  totalEdges: number;
+  modelNodeCount: number;
+  dataNodeCount: number;
+  trainingNodeCount: number;
+  learnableLayerCount: number;
+  modelDepth: number;
+  hasMetric: boolean;
+  hasTrainer: boolean;
+}
+
+/** Model complexity stats returned by training diagnostics */
+export interface TrainingModelStats {
+  parameterCount: number;
+  trainableParameterCount: number;
+  learnableLayerCount: number;
+  outputClasses: number;
+  flattenFeatures: number | null;
+  inputShape: number[];
+  complexityLabel: string;
+}
+
+/** Training config summary returned by diagnostics */
+export interface TrainingConfigStats {
+  datasetName: string;
+  estimatedDatasetSize: number;
+  numClasses: number;
+  batchSize: number;
+  estimatedBatchesPerEpoch: number;
+  epochs: number;
+  optimizerType: string;
+  learningRate: number;
+  weightDecay: number;
+  momentum: number | null;
+  lossType: string;
+  metricType: string | null;
+  device: string;
+}
+
+/** Training diagnostics returned before a run starts */
+export interface TrainingDiagnosticsResponse {
+  ok: boolean;
+  summary: string;
+  warnings: string[];
+  errors: string[];
+  suggestions: string[];
+  graphStats: TrainingGraphStats;
+  modelStats: TrainingModelStats;
+  trainingStats: TrainingConfigStats;
+}
+
+/** Post-run training explanation shown in the analysis view */
+export interface TrainingInsightsResponse {
+  configurationSummary: string;
+  modelSummary: string;
+  trendSummary: string;
+  qualitySummary: string;
+  failureExplanation: string | null;
+  possibleCauses: string[];
+  suggestedFixes: string[];
+}
+
 /** Response from /run-training */
 export interface RunTrainingResponse {
   ok: boolean;
   status: string;
   logs: TrainingEpochLog[];
   errors: string[];
+  diagnostics?: TrainingDiagnosticsResponse | null;
+  insights?: TrainingInsightsResponse | null;
   trainingMetadata?: TrainingRunMetadata | null;
 }
