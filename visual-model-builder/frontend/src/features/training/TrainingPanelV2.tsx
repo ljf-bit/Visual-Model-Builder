@@ -801,6 +801,15 @@ const TrainingPanelV2: React.FC = () => {
                   Dataset used: {trainingMetadata.datasetUsed}
                 </div>
                 <div className="training-panel-evidence-text">
+                  Dataset mode: {trainingMetadata.datasetMode || 'builtin'}
+                </div>
+                <div className="training-panel-evidence-text">
+                  Total samples: {trainingMetadata.sampleCount || trainingMetadata.datasetSize}
+                </div>
+                <div className="training-panel-evidence-text">
+                  Splits: train {trainingMetadata.splits?.train ?? trainingMetadata.datasetSize}, val {trainingMetadata.splits?.val ?? 0}, test {trainingMetadata.splits?.test ?? 0}
+                </div>
+                <div className="training-panel-evidence-text">
                   Weights: {trainingMetadata.weightsPath || 'Unavailable'}
                 </div>
                 <div className="training-panel-evidence-text">

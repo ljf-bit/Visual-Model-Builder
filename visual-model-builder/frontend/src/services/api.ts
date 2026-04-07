@@ -8,6 +8,7 @@
 import type {
   GenerateCodeResponse,
   InferShapesResponse,
+  InspectDatasetResponse,
   ProjectGraph,
   TrainingDiagnosticsResponse,
   RunTrainingResponse,
@@ -78,4 +79,9 @@ export async function runTraining(project: ProjectGraph): Promise<RunTrainingRes
 /** Diagnose a training graph before running it */
 export async function diagnoseTrainingGraph(project: ProjectGraph): Promise<TrainingDiagnosticsResponse> {
   return post('/diagnose-training-graph', { project });
+}
+
+/** Inspect a dataset config before training */
+export async function inspectDataset(config: Record<string, unknown>): Promise<InspectDatasetResponse> {
+  return post('/inspect-dataset', { config });
 }

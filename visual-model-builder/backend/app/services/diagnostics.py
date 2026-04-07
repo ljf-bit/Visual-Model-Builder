@@ -12,6 +12,7 @@ from app.schemas.responses import (
     TrainingInsightsResponse,
     TrainingModelStats,
 )
+from app.services.dataset_inspection import inspect_dataset_config
 from app.services.shape_infer import infer_graph_shapes
 from app.services.training import (
     get_input_shape,
@@ -137,14 +138,27 @@ def _build_training_stats(ir_graph) -> TrainingConfigStats:
     trainer_params = components.trainer_node.params if components.trainer_node else {}
     metric_params = components.metric_node.params if components.metric_node else {}
 
-    dataset_name = str(dataset_params.get("datasetName", "Unknown"))
-    estimated_dataset_size = _estimate_dataset_size(dataset_name)
+    inspection = inspect_dataset_config(dataset_params) if components.dataset_node else None
+    dataset_name = (
+        str(dataset_params.get("datasetName", "Unknown"))
+        if inspection is None or inspection.dataset_mode == "builtin"
+        else inspection.dataset_mode
+    )
+    estimated_dataset_size = (
+        inspection.splits.get("train", inspection.sample_count)
+        if inspection is not None and inspection.success
+        else _estimate_dataset_size(dataset_name)
+    )
     batch_size = max(_safe_int(dataloader_params.get("batchSize"), 0), 0)
 
     return TrainingConfigStats(
         datasetName=dataset_name,
         estimatedDatasetSize=estimated_dataset_size,
-        numClasses=_safe_int(dataset_params.get("numClasses"), get_num_classes(ir_graph)),
+        numClasses=(
+            inspection.num_classes
+            if inspection is not None and inspection.success and inspection.num_classes > 0
+            else _safe_int(dataset_params.get("numClasses"), get_num_classes(ir_graph))
+        ),
         batchSize=batch_size,
         estimatedBatchesPerEpoch=ceil(estimated_dataset_size / batch_size) if estimated_dataset_size and batch_size else 0,
         epochs=_safe_int(trainer_params.get("epochs"), 0),
@@ -161,7 +175,7 @@ def _build_training_stats(ir_graph) -> TrainingConfigStats:
 def diagnose_training_graph(ir_graph) -> TrainingDiagnosticsResponse:
     """Return teaching-oriented diagnostics for the current training graph."""
 
-    global_errors, node_errors = validate_graph(ir_graph, require_training=True)
+    global_errors, node_errors, validation_warnings = validate_graph(ir_graph, require_training=True)
     node_results = infer_graph_shapes(ir_graph)
     node_map = get_node_map(ir_graph)
     components = resolve_training_components(ir_graph)
@@ -172,6 +186,9 @@ def diagnose_training_graph(ir_graph) -> TrainingDiagnosticsResponse:
     warnings: list[str] = []
     errors: list[str] = []
     suggestions: list[str] = []
+
+    for message in validation_warnings:
+        _append_unique(warnings, message)
 
     for message in global_errors:
         _append_unique(errors, message)

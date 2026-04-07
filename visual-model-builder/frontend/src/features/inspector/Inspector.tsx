@@ -1,15 +1,220 @@
-import React from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 
 import { getNodeBehavior } from '../../registry';
+import { inspectDataset } from '../../services';
 import { useAppStore } from '../../store';
+import type { InspectDatasetResponse, ParamSpec } from '../../types';
+
+function formatListValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(', ');
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+function parseFloatList(value: string): number[] {
+  return value
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item));
+}
+
+function parseStringList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function formatSplitSummary(splits: Record<string, number>): string {
+  return ['train', 'val', 'test']
+    .map((key) => `${key}: ${splits[key] ?? 0}`)
+    .join(' | ');
+}
+
+function buildParamPatch(
+  nodeType: string,
+  currentParams: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = { [key]: value };
+
+  if (nodeType === 'DataLoader') {
+    const nextNumWorkers = key === 'numWorkers' ? Number(value) : Number(currentParams.numWorkers ?? 0);
+    if (nextNumWorkers === 0) {
+      patch.persistentWorkers = false;
+    }
+    if (key === 'persistentWorkers' && nextNumWorkers === 0) {
+      patch.persistentWorkers = false;
+    }
+  }
+
+  if (nodeType === 'Dataset' && key === 'datasetMode' && value !== 'csv') {
+    patch.taskType = 'classification';
+  }
+
+  return patch;
+}
+
+function renderParamControl(
+  param: ParamSpec,
+  params: Record<string, unknown>,
+  handleParamChange: (key: string, value: unknown) => void,
+) {
+  const disabled = param.disabled?.(params) ?? false;
+
+  if (param.type === 'bool') {
+    return (
+      <input
+        type="checkbox"
+        checked={Boolean(params[param.key])}
+        disabled={disabled}
+        onChange={(event) => handleParamChange(param.key, event.target.checked)}
+      />
+    );
+  }
+
+  if (param.type === 'select') {
+    return (
+      <select
+        value={String(params[param.key] ?? param.defaultValue)}
+        disabled={disabled}
+        onChange={(event) => handleParamChange(param.key, event.target.value)}
+      >
+        {param.options?.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (param.type === 'shape') {
+    return (
+      <input
+        type="text"
+        disabled={disabled}
+        value={JSON.stringify(params[param.key] ?? param.defaultValue)}
+        onChange={(event) => {
+          try {
+            handleParamChange(param.key, JSON.parse(event.target.value));
+          } catch {
+            // Ignore invalid shape input until it becomes valid JSON.
+          }
+        }}
+      />
+    );
+  }
+
+  if (param.type === 'text') {
+    return (
+      <input
+        type="text"
+        disabled={disabled}
+        placeholder={param.placeholder}
+        value={String(params[param.key] ?? param.defaultValue ?? '')}
+        onChange={(event) => handleParamChange(param.key, event.target.value)}
+      />
+    );
+  }
+
+  if (param.type === 'float_list') {
+    return (
+      <input
+        type="text"
+        disabled={disabled}
+        placeholder={param.placeholder ?? '0.5, 0.5, 0.5'}
+        value={formatListValue(params[param.key] ?? param.defaultValue)}
+        onChange={(event) => handleParamChange(param.key, parseFloatList(event.target.value))}
+      />
+    );
+  }
+
+  if (param.type === 'string_list') {
+    return (
+      <input
+        type="text"
+        disabled={disabled}
+        placeholder={param.placeholder ?? 'feature_a, feature_b'}
+        value={formatListValue(params[param.key] ?? param.defaultValue)}
+        onChange={(event) => handleParamChange(param.key, parseStringList(event.target.value))}
+      />
+    );
+  }
+
+  return (
+    <input
+      type="number"
+      disabled={disabled}
+      step={param.type === 'float' ? '0.001' : '1'}
+      value={Number(params[param.key] ?? param.defaultValue)}
+      onChange={(event) => handleParamChange(param.key, Number(event.target.value))}
+    />
+  );
+}
 
 const Inspector: React.FC = () => {
   const selectedNodeId = useAppStore((state) => state.selectedNodeId);
   const nodes = useAppStore((state) => state.project.nodes);
   const updateNodeParams = useAppStore((state) => state.updateNodeParams);
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [datasetPreview, setDatasetPreview] = useState<InspectDatasetResponse | null>(null);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const behavior = selectedNode ? getNodeBehavior(selectedNode.type) : undefined;
+  const selectedParams = useMemo(
+    () => (selectedNode?.data.params ?? {}) as Record<string, unknown>,
+    [selectedNode?.data.params],
+  );
+  const datasetSignature = useMemo(
+    () => (selectedNode?.type === 'Dataset' ? JSON.stringify(selectedNode.data.params ?? {}) : ''),
+    [selectedNode],
+  );
+  const visibleParams = useMemo(
+    () => behavior?.template.params.filter((param) => !param.visible || param.visible(selectedParams)) ?? [],
+    [behavior, selectedParams],
+  );
+
+  useEffect(() => {
+    if (!selectedNode || selectedNode.type !== 'Dataset') {
+      setDatasetPreview(null);
+      setIsInspecting(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        setIsInspecting(true);
+        const preview = await inspectDataset(selectedParams);
+        startTransition(() => {
+          setDatasetPreview(preview);
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown dataset inspection error';
+        startTransition(() => {
+          setDatasetPreview({
+            success: false,
+            datasetMode: String(selectedParams.datasetMode ?? 'builtin'),
+            resolvedSplitMode: String(selectedParams.splitMode ?? 'predefined'),
+            taskType: String(selectedParams.taskType ?? 'classification'),
+            sampleCount: 0,
+            numClasses: 0,
+            classNames: [],
+            splits: { train: 0, val: 0, test: 0 },
+            inputShape: null,
+            warnings: [],
+            errors: [message],
+          });
+        });
+      } finally {
+        setIsInspecting(false);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [datasetSignature, selectedNode, selectedParams]);
 
   if (!selectedNode || !behavior) {
     return (
@@ -21,7 +226,7 @@ const Inspector: React.FC = () => {
   }
 
   const handleParamChange = (key: string, value: unknown) => {
-    updateNodeParams(selectedNode.id, { [key]: value });
+    updateNodeParams(selectedNode.id, buildParamPatch(selectedNode.type, selectedParams, key, value));
   };
 
   return (
@@ -53,49 +258,80 @@ const Inspector: React.FC = () => {
         </div>
       ) : null}
 
+      {selectedNode.type === 'Dataset' ? (
+        <div className="inspector-errors">
+          <div className="inspector-node-header">
+            <span className="inspector-node-type">Dataset Preview</span>
+            <span className="inspector-node-id">{isInspecting ? 'Inspecting...' : datasetPreview?.success ? 'Ready' : 'Pending'}</span>
+          </div>
+          {datasetPreview ? (
+            <>
+              <div className="inspector-shapes">
+                <div className="inspector-shape">
+                  <span>Mode:</span>
+                  <code>{datasetPreview.datasetMode}</code>
+                </div>
+                <div className="inspector-shape">
+                  <span>Split:</span>
+                  <code>{datasetPreview.resolvedSplitMode}</code>
+                </div>
+                <div className="inspector-shape">
+                  <span>Samples:</span>
+                  <code>{datasetPreview.sampleCount}</code>
+                </div>
+                <div className="inspector-shape">
+                  <span>Classes:</span>
+                  <code>{datasetPreview.numClasses}</code>
+                </div>
+                <div className="inspector-shape">
+                  <span>Splits:</span>
+                  <code>{formatSplitSummary(datasetPreview.splits)}</code>
+                </div>
+                <div className="inspector-shape">
+                  <span>Input:</span>
+                  <code>{datasetPreview.inputShape ? JSON.stringify(datasetPreview.inputShape) : '--'}</code>
+                </div>
+              </div>
+
+              {datasetPreview.classNames.length > 0 ? (
+                <div className="inspector-shape">
+                  <span>Class Names:</span>
+                  <code>{datasetPreview.classNames.join(', ')}</code>
+                </div>
+              ) : null}
+
+              {datasetPreview.errors.map((error) => (
+                <div key={`dataset-preview-error-${error}`} className="inspector-error">
+                  {error}
+                </div>
+              ))}
+              {datasetPreview.warnings.map((warning) => (
+                <div key={`dataset-preview-warning-${warning}`} className="inspector-error">
+                  {warning}
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className="inspector-error">Configure the dataset fields to load a preview.</div>
+          )}
+        </div>
+      ) : null}
+
+      {selectedNode.type === 'DataLoader' && Number(selectedParams.numWorkers ?? 0) === 0 ? (
+        <div className="inspector-errors">
+          <div className="inspector-error">
+            `persistentWorkers` and `prefetchFactor` are automatically ignored while `numWorkers` is 0.
+          </div>
+        </div>
+      ) : null}
+
       <div className="inspector-params">
-        {behavior.template.params.map((param) => (
+        {visibleParams.map((param) => (
           <div key={param.key} className="inspector-param">
             <label className="inspector-param-label" title={param.helpText}>
               {param.label}
             </label>
-            {param.type === 'bool' ? (
-              <input
-                type="checkbox"
-                checked={Boolean(selectedNode.data.params[param.key])}
-                onChange={(event) => handleParamChange(param.key, event.target.checked)}
-              />
-            ) : param.type === 'select' ? (
-              <select
-                value={String(selectedNode.data.params[param.key] ?? param.defaultValue)}
-                onChange={(event) => handleParamChange(param.key, event.target.value)}
-              >
-                {param.options?.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            ) : param.type === 'shape' ? (
-              <input
-                type="text"
-                value={JSON.stringify(selectedNode.data.params[param.key] ?? param.defaultValue)}
-                onChange={(event) => {
-                  try {
-                    handleParamChange(param.key, JSON.parse(event.target.value));
-                  } catch {
-                    // Ignore invalid shape input until it becomes valid JSON.
-                  }
-                }}
-              />
-            ) : (
-              <input
-                type="number"
-                step={param.type === 'float' ? '0.001' : '1'}
-                value={Number(selectedNode.data.params[param.key] ?? param.defaultValue)}
-                onChange={(event) => handleParamChange(param.key, Number(event.target.value))}
-              />
-            )}
+            {renderParamControl(param, selectedParams, handleParamChange)}
           </div>
         ))}
       </div>

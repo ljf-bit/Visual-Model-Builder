@@ -61,6 +61,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 后端启动后，可访问：
+
 - API 文档: http://localhost:8000/docs
 - 健康检查: http://localhost:8000/health
 
@@ -75,22 +76,29 @@ npm run dev
 
 ## API 端点
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 健康检查 |
-| POST | `/validate-graph` | 校验图结构 |
-| POST | `/infer-shapes` | 推导各节点 shape |
-| POST | `/generate-code` | 生成 PyTorch 代码 |
+| 方法 | 路径                | 说明              |
+| ---- | ------------------- | ----------------- |
+| GET  | `/health`         | 健康检查          |
+| POST | `/validate-graph` | 校验图结构        |
+| POST | `/infer-shapes`   | 推导各节点 shape  |
+| POST | `/generate-code`  | 生成 PyTorch 代码 |
+| POST | `/inspect-dataset` | 探测 Dataset 节点配置并返回数据摘要 |
+| POST | `/validate-training-graph` | 校验训练图与真实数据配置 |
+| POST | `/generate-training-code` | 生成训练脚本 |
+| POST | `/diagnose-training-graph` | 返回训练诊断与教学建议 |
+| POST | `/run-training` | 执行最小训练闭环 |
 
 ## 技术栈
 
 ### 前端
+
 - React + TypeScript
 - React Flow (@xyflow/react) — 节点画布
 - Zustand — 状态管理
 - Vite — 构建工具
 
 ### 后端
+
 - Python 3.11 + FastAPI
 - Pydantic v2 — 数据校验
 - Uvicorn — ASGI 服务器
@@ -108,6 +116,14 @@ npm run dev
 cd backend
 conda run -n visual-model-builder pytest app/tests/ -v
 ```
+
+## Dataset / DataLoader 升级
+
+- Dataset 现已支持 `builtin` 与 `image_folder`，并为 `csv` 保留了 schema 与 inspect 扩展点。
+- `image_folder` 支持显式 `train/val/test` 目录结构，也支持按比例切分扁平类别目录。
+- 新增 `POST /inspect-dataset`，返回样本数、类别数、类别名、split 统计、输入 shape 摘要、warnings 和 errors。
+- DataLoader 新增 `dropLast`、`pinMemory`、`persistentWorkers`、`prefetchFactor` 与 `collateFnType`。
+- 训练代码生成与 `/run-training` 现在都支持真实 `image_folder` 图像分类数据。
 
 ## 后续规划
 

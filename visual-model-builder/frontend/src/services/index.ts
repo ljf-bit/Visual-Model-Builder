@@ -7,4 +7,5 @@ export {
   generateTrainingCode,
   diagnoseTrainingGraph,
   runTraining,
+  inspectDataset,
 } from './api';

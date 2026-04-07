@@ -19,6 +19,7 @@ class ValidateGraphResponse(BaseModel):
     ok: bool
     global_errors: list[str] = Field(default_factory=list, alias="globalErrors")
     node_errors: dict[str, list[str]] = Field(default_factory=dict, alias="nodeErrors")
+    warnings: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -40,6 +41,24 @@ class GenerateCodeResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class InspectDatasetResponse(BaseModel):
+    """Response from /inspect-dataset."""
+
+    success: bool
+    dataset_mode: str = Field("", alias="datasetMode")
+    resolved_split_mode: str = Field("", alias="resolvedSplitMode")
+    task_type: str = Field("", alias="taskType")
+    sample_count: int = Field(0, alias="sampleCount")
+    num_classes: int = Field(0, alias="numClasses")
+    class_names: list[str] = Field(default_factory=list, alias="classNames")
+    splits: dict[str, int] = Field(default_factory=dict)
+    input_shape: list[int] | None = Field(default=None, alias="inputShape")
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
 class TrainingEpochLog(BaseModel):
     """Metrics captured for a single training epoch."""
 
@@ -55,12 +74,23 @@ class TrainingRunMetadata(BaseModel):
     requested_dataset_name: str = Field("", alias="requestedDatasetName")
     dataset_used: str = Field("", alias="datasetUsed")
     dataset_size: int = Field(0, alias="datasetSize")
+    dataset_mode: str = Field("", alias="datasetMode")
+    sample_count: int = Field(0, alias="sampleCount")
     image_size: int = Field(0, alias="imageSize")
     num_classes: int = Field(0, alias="numClasses")
+    class_names: list[str] = Field(default_factory=list, alias="classNames")
+    splits: dict[str, int] = Field(default_factory=dict)
+    input_shape: list[int] = Field(default_factory=list, alias="inputShape")
+    task_type: str = Field("classification", alias="taskType")
     train_split: bool = Field(True, alias="trainSplit")
     batch_size: int = Field(0, alias="batchSize")
     shuffle: bool = True
     num_workers: int = Field(0, alias="numWorkers")
+    drop_last: bool = Field(False, alias="dropLast")
+    pin_memory: bool = Field(False, alias="pinMemory")
+    persistent_workers: bool = Field(False, alias="persistentWorkers")
+    prefetch_factor: int | None = Field(default=None, alias="prefetchFactor")
+    collate_fn_type: str = Field("default", alias="collateFnType")
     epochs: int = 0
     device: str = ""
     loss_type: str = Field("", alias="lossType")

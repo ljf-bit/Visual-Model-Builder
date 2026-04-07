@@ -8,7 +8,7 @@
 // ============================================================
 
 /** Supported parameter types in node configuration */
-export type ParamType = 'int' | 'float' | 'bool' | 'select' | 'shape';
+export type ParamType = 'int' | 'float' | 'bool' | 'select' | 'shape' | 'text' | 'float_list' | 'string_list';
 
 /** Definition of a single configurable parameter */
 export interface ParamSpec {
@@ -19,6 +19,9 @@ export interface ParamSpec {
   defaultValue: unknown;
   helpText?: string;
   options?: string[];
+  placeholder?: string;
+  visible?: (params: Record<string, unknown>) => boolean;
+  disabled?: (params: Record<string, unknown>) => boolean;
 }
 
 // ============================================================
@@ -111,6 +114,7 @@ export interface ValidateGraphResponse {
   ok: boolean;
   globalErrors: string[];
   nodeErrors: Record<string, string[]>;
+  warnings: string[];
 }
 
 /** Response from /infer-shapes */
@@ -123,6 +127,21 @@ export interface InferShapesResponse {
 export interface GenerateCodeResponse {
   ok: boolean;
   code: string;
+  errors: string[];
+}
+
+/** Response from /inspect-dataset */
+export interface InspectDatasetResponse {
+  success: boolean;
+  datasetMode: string;
+  resolvedSplitMode: string;
+  taskType: string;
+  sampleCount: number;
+  numClasses: number;
+  classNames: string[];
+  splits: Record<string, number>;
+  inputShape: number[] | null;
+  warnings: string[];
   errors: string[];
 }
 
@@ -142,12 +161,23 @@ export interface TrainingRunMetadata {
   requestedDatasetName: string;
   datasetUsed: string;
   datasetSize: number;
+  datasetMode: string;
+  sampleCount: number;
   imageSize: number;
   numClasses: number;
+  classNames: string[];
+  splits: Record<string, number>;
+  inputShape: number[];
+  taskType: string;
   trainSplit: boolean;
   batchSize: number;
   shuffle: boolean;
   numWorkers: number;
+  dropLast: boolean;
+  pinMemory: boolean;
+  persistentWorkers: boolean;
+  prefetchFactor: number | null;
+  collateFnType: string;
   epochs: number;
   device: string;
   lossType: string;

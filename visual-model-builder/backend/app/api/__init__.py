@@ -94,15 +94,17 @@ async def generate_code(request: ProjectRequest):
 
 from fastapi import APIRouter
 
-from app.schemas.requests import ProjectRequest
+from app.schemas.requests import InspectDatasetRequest, ProjectRequest
 from app.schemas.responses import (
     GenerateCodeResponse,
     InferShapesResponse,
+    InspectDatasetResponse,
     RunTrainingResponse,
     TrainingDiagnosticsResponse,
     ValidateGraphResponse,
 )
 from app.services.codegen import generate_code as do_generate_code, generate_model_code as do_generate_model_code
+from app.services.dataset_inspection import inspect_dataset_config
 from app.services.diagnostics import (
     build_training_insights,
     diagnose_training_graph as do_diagnose_training_graph,
@@ -129,11 +131,12 @@ async def validate_graph(request: ProjectRequest):
     """Validate the project graph structure."""
 
     ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph)
+    global_errors, node_errors, warnings = do_validate_graph(ir_graph)
     return ValidateGraphResponse(
         ok=len(global_errors) == 0 and sum(len(errs) for errs in node_errors.values()) == 0,
         global_errors=global_errors,
         node_errors=node_errors,
+        warnings=warnings,
     )
 
 
@@ -152,7 +155,7 @@ async def generate_code(request: ProjectRequest):
     """Generate PyTorch code from the project graph."""
 
     ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph)
+    global_errors, node_errors, _warnings = do_validate_graph(ir_graph)
     node_results = infer_graph_shapes(ir_graph)
     all_errors = _collect_errors(global_errors, node_errors, node_results)
 
@@ -167,11 +170,12 @@ async def validate_training_graph(request: ProjectRequest):
     """Validate the Phase 2 training graph structure."""
 
     ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph, require_training=True)
+    global_errors, node_errors, warnings = do_validate_graph(ir_graph, require_training=True)
     return ValidateGraphResponse(
         ok=len(global_errors) == 0 and sum(len(errs) for errs in node_errors.values()) == 0,
         global_errors=global_errors,
         node_errors=node_errors,
+        warnings=warnings,
     )
 
 
@@ -180,7 +184,7 @@ async def generate_training_code(request: ProjectRequest):
     """Generate a full training script from the project graph."""
 
     ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph, require_training=True)
+    global_errors, node_errors, _warnings = do_validate_graph(ir_graph, require_training=True)
     node_results = infer_graph_shapes(ir_graph)
     all_errors = _collect_errors(global_errors, node_errors, node_results)
 
@@ -196,6 +200,14 @@ async def diagnose_training_graph(request: ProjectRequest):
 
     ir_graph = project_to_ir(request.project)
     return do_diagnose_training_graph(ir_graph)
+
+
+@router.post("/inspect-dataset", response_model=InspectDatasetResponse)
+async def inspect_dataset(request: InspectDatasetRequest):
+    """Inspect a Dataset node config and return resolved metadata."""
+
+    inspection = inspect_dataset_config(request.config)
+    return InspectDatasetResponse(**inspection.to_dict())
 
 
 @router.post("/run-training", response_model=RunTrainingResponse)
@@ -239,6 +251,22 @@ async def run_training(request: ProjectRequest):
                 diagnostics=diagnostics,
                 logs=[],
                 status="runtime_unavailable",
+                runtime_messages=[str(exc)],
+                training_metadata=None,
+            ),
+            training_metadata=None,
+        )
+    except Exception as exc:
+        return RunTrainingResponse(
+            ok=False,
+            status="runtime_failed",
+            logs=[],
+            errors=[str(exc)],
+            diagnostics=diagnostics,
+            insights=build_training_insights(
+                diagnostics=diagnostics,
+                logs=[],
+                status="runtime_failed",
                 runtime_messages=[str(exc)],
                 training_metadata=None,
             ),
