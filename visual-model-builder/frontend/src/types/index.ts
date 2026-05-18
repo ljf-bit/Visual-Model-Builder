@@ -3,6 +3,13 @@
  * These types are shared across the frontend application.
  */
 
+export type AppLanguage = 'en' | 'zh';
+
+export interface LocalizedText {
+  en: string;
+  zh: string;
+}
+
 // ============================================================
 // Parameter Types
 // ============================================================
@@ -268,4 +275,23 @@ export interface RunTrainingResponse {
   diagnostics?: TrainingDiagnosticsResponse | null;
   insights?: TrainingInsightsResponse | null;
   trainingMetadata?: TrainingRunMetadata | null;
+}
+
+/** Lifecycle states for asynchronous training jobs */
+export type TrainingJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+/** Response from /training-jobs endpoints */
+export interface TrainingJobResponse {
+  jobId: string;
+  ok: boolean;
+  status: TrainingJobStatus;
+  progress: number;
+  cancelRequested: boolean;
+  logs: TrainingEpochLog[];
+  errors: string[];
+  diagnostics?: TrainingDiagnosticsResponse | null;
+  insights?: TrainingInsightsResponse | null;
+  trainingMetadata?: TrainingRunMetadata | null;
+  createdAt: string;
+  updatedAt: string;
 }

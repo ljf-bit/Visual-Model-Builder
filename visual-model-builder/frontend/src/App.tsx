@@ -8,6 +8,9 @@ import { Inspector } from './features/inspector';
 import { Palette } from './features/palette';
 import { TrainingPanel } from './features/training';
 import { hasTrainingNodes, normalizeProjectGraph } from './graph/graphUtils';
+import { LanguageProvider } from './hooks/LanguageProvider';
+import { useLanguage } from './hooks/useLanguage';
+import { useTheme } from './hooks/useTheme';
 import { inferShapes, validateGraph, validateTrainingGraph } from './services';
 import { useAppStore } from './store';
 
@@ -51,13 +54,15 @@ function hasTextSelection(): boolean {
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim().length > 0);
 }
 
-const App: React.FC = () => {
+const AppShell: React.FC = () => {
   const project = useAppStore((state) => state.project);
   const isDirty = useAppStore((state) => state.isDirty);
   const globalErrors = useAppStore((state) => state.globalErrors);
   const setProject = useAppStore((state) => state.setProject);
   const setRemoteFeedback = useAppStore((state) => state.setRemoteFeedback);
   const markSaved = useAppStore((state) => state.markSaved);
+  const { theme, toggleTheme } = useTheme();
+  const { toggleLanguage, t } = useLanguage();
   const [paletteWidth, setPaletteWidth] = useState(240);
   const [inspectorWidth, setInspectorWidth] = useState(300);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(280);
@@ -170,10 +175,10 @@ const App: React.FC = () => {
     } catch (error) {
       const saveError = error as Error;
       if (saveError.name !== 'AbortError') {
-        alert(`Save failed: ${saveError.message}`);
+          alert(t('app.saveFailed', { message: saveError.message }));
       }
     }
-  }, [markSaved, project]);
+  }, [markSaved, project, t]);
 
   const handleLoad = useCallback(() => {
     const input = document.createElement('input');
@@ -193,19 +198,19 @@ const App: React.FC = () => {
 
           const normalizedProject = normalizeProjectGraph(parsed);
           if (!normalizedProject) {
-            alert('Invalid project file format.');
+            alert(t('app.invalidProject'));
             return;
           }
 
           setProject(normalizedProject);
         } catch {
-          alert('Failed to parse the selected project file.');
+          alert(t('app.parseProjectFailed'));
         }
       };
       reader.readAsText(file);
     };
     input.click();
-  }, [setProject]);
+  }, [setProject, t]);
 
   const handleGlobalShortcuts = useCallback(
     (event: KeyboardEvent) => {
@@ -264,22 +269,47 @@ const App: React.FC = () => {
   }, [handleGlobalShortcuts]);
 
   return (
-    <ReactFlowProvider>
-      <div className="app-layout" style={appLayoutStyle}>
+    <div className="app-layout" style={appLayoutStyle}>
         <header className="app-header">
-          <div className="app-title">Visual Model Builder</div>
+          <div className="app-brand">
+            <div className="app-brand-mark" aria-hidden="true">
+              VM
+            </div>
+            <div>
+              <div className="app-title">Visual Model Builder</div>
+              <div className="app-project-name">{project.metadata.name || 'Untitled Project'}</div>
+            </div>
+          </div>
+          <div className="app-command-center" aria-label={t('app.projectStatus')}>
+            <span className="app-status-pill">
+              {t('app.nodes', { count: project.nodes.length })}
+            </span>
+            <span className="app-status-pill">
+              {t('app.edges', { count: project.edges.length })}
+            </span>
+            <span className={`app-status-pill ${globalErrors.length > 0 ? 'danger' : 'success'}`}>
+              {globalErrors.length > 0 ? t('app.issues', { count: globalErrors.length }) : t('app.ready')}
+            </span>
+            {isDirty ? <span className="app-status-pill warning">{t('app.unsaved')}</span> : null}
+          </div>
           <div className="app-actions">
+            <button className="app-icon-btn" onClick={toggleLanguage} title={t('app.languageToggle')} aria-label={t('app.languageToggle')}>
+              {t('app.languageButton')}
+            </button>
+            <button className="app-icon-btn" onClick={toggleTheme} title={t('app.themeToggle')} aria-label={t('app.themeToggle')}>
+              {theme === 'dark' ? t('app.light') : t('app.dark')}
+            </button>
             <button className="app-btn" onClick={handleLoad}>
-              Open Project
+              {t('app.open')}
             </button>
             <button className="app-btn" onClick={handleSave}>
-              Save Project
+              {t('app.save')}
             </button>
           </div>
         </header>
 
         {globalErrors.length > 0 ? (
-          <section className="app-global-errors" aria-label="Graph validation errors">
+          <section className="app-global-errors" aria-label={t('app.validationErrors')}>
             {globalErrors.map((message) => (
               <div key={message} className="app-global-error">
                 {message}
@@ -337,8 +367,15 @@ const App: React.FC = () => {
           <Inspector />
         </div>
       </div>
-    </ReactFlowProvider>
   );
 };
+
+const App: React.FC = () => (
+  <LanguageProvider>
+    <ReactFlowProvider>
+      <AppShell />
+    </ReactFlowProvider>
+  </LanguageProvider>
+);
 
 export default App;

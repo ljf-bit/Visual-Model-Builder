@@ -201,3 +201,22 @@ class RunTrainingResponse(BaseModel):
     training_metadata: TrainingRunMetadata | None = Field(None, alias="trainingMetadata")
 
     model_config = {"populate_by_name": True}
+
+
+class TrainingJobResponse(BaseModel):
+    """Serializable state for an asynchronous training job."""
+
+    job_id: str = Field("", alias="jobId")
+    ok: bool = False
+    status: str = "queued"
+    progress: float = 0.0
+    cancel_requested: bool = Field(False, alias="cancelRequested")
+    logs: list[TrainingEpochLog] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    diagnostics: TrainingDiagnosticsResponse | None = None
+    insights: TrainingInsightsResponse | None = None
+    training_metadata: TrainingRunMetadata | None = Field(None, alias="trainingMetadata")
+    created_at: str = Field("", alias="createdAt")
+    updated_at: str = Field("", alias="updatedAt")
+
+    model_config = {"populate_by_name": True}

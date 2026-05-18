@@ -7,5 +7,8 @@ export {
   generateTrainingCode,
   diagnoseTrainingGraph,
   runTraining,
+  createTrainingJob,
+  getTrainingJob,
+  cancelTrainingJob,
   inspectDataset,
 } from './api';

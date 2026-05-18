@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from app.services.graph_ir import IRGraph, IRNode, topological_sort
 
@@ -27,50 +27,6 @@ class TrainingComponents:
     trainer_node: IRNode | None
     metric_node: IRNode | None
     model_nodes: list[IRNode]
-
-
-@dataclass(slots=True)
-class RuntimeDatasetBundle:
-    """Resolved runtime dataset and the metadata needed for reporting."""
-
-    dataset: Any
-    requested_name: str
-    used_name: str
-    image_size: int
-    num_classes: int
-    train_split: bool
-    warnings: list[str]
-
-
-@dataclass(slots=True)
-class TrainingRunMetadataPayload:
-    """Serializable summary of a completed training run."""
-
-    project_name: str
-    requested_dataset_name: str
-    dataset_used: str
-    dataset_size: int
-    image_size: int
-    num_classes: int
-    train_split: bool
-    batch_size: int
-    shuffle: bool
-    num_workers: int
-    epochs: int
-    device: str
-    loss_type: str
-    optimizer_type: str
-    learning_rate: float
-    weight_decay: float
-    momentum: float | None
-    metric_type: str | None
-    started_at: str
-    completed_at: str
-    duration_seconds: float
-    run_directory: str
-    weights_path: str
-    logs_path: str
-    summary_path: str
 
 
 def get_node_map(ir_graph: IRGraph) -> dict[str, IRNode]:
@@ -265,78 +221,6 @@ def build_runtime_model(ir_graph: IRGraph):
     return GraphModel()
 
 
-def _resize_transform(image_size: int, transforms):
-    transform_steps: list[object] = []
-    if image_size != 28:
-        transform_steps.append(transforms.Resize((image_size, image_size)))
-    transform_steps.append(transforms.ToTensor())
-    return transforms.Compose(transform_steps)
-
-
-def build_runtime_dataset(ir_graph: IRGraph):
-    """Build a small teaching dataset and return warnings if any."""
-
-    _, _, _, Subset, datasets, transforms = _load_torch_runtime()
-    components = resolve_training_components(ir_graph)
-    params = components.dataset_node.params if components.dataset_node else {}
-    dataset_name = str(params.get("datasetName", "FakeData"))
-    image_size = int(params.get("imageSize", get_input_shape(ir_graph)[-1]))
-    num_classes = int(params.get("numClasses", get_num_classes(ir_graph)))
-    input_shape = get_input_shape(ir_graph)
-    train_split = _parse_bool(params.get("trainSplit", True), True)
-    warnings: list[str] = []
-
-    if dataset_name == "MNIST":
-        transform = _resize_transform(image_size, transforms)
-        try:
-            dataset = datasets.MNIST(
-                root="./data",
-                train=train_split,
-                download=False,
-                transform=transform,
-            )
-            return RuntimeDatasetBundle(
-                dataset=Subset(dataset, range(min(len(dataset), 256))),
-                requested_name=dataset_name,
-                used_name="MNIST",
-                image_size=image_size,
-                num_classes=num_classes,
-                train_split=train_split,
-                warnings=warnings,
-            )
-        except Exception:
-            warnings.append("MNIST was unavailable locally, so training used FakeData instead.")
-
-    return RuntimeDatasetBundle(
-        dataset=datasets.FakeData(
-            size=256,
-            image_size=(int(input_shape[0]), image_size, image_size),
-            num_classes=num_classes,
-            transform=transforms.ToTensor(),
-        ),
-        requested_name=dataset_name,
-        used_name="FakeData",
-        image_size=image_size,
-        num_classes=num_classes,
-        train_split=train_split,
-        warnings=warnings,
-    )
-
-
-def build_runtime_dataloader(ir_graph: IRGraph, dataset) -> DataLoader:
-    """Create a DataLoader from graph params."""
-
-    _, _, DataLoader, _, _, _ = _load_torch_runtime()
-    components = resolve_training_components(ir_graph)
-    params = components.dataloader_node.params if components.dataloader_node else {}
-    return DataLoader(
-        dataset,
-        batch_size=int(params.get("batchSize", 32)),
-        shuffle=bool(params.get("shuffle", True)),
-        num_workers=int(params.get("numWorkers", 0)),
-    )
-
-
 def build_runtime_loss(ir_graph: IRGraph):
     """Instantiate the selected loss."""
 
@@ -444,131 +328,8 @@ def _persist_training_artifacts(
     return metadata
 
 
-def run_training(
-    ir_graph: IRGraph,
-    project_name: str = "Untitled Project",
-    diagnostics_payload: Any | None = None,
-) -> tuple[str, list[dict[str, float | int | None]], list[str], dict[str, object] | None, dict[str, object] | None]:
-    """Execute the minimal Phase 2 training loop."""
-
-    torch, nn, _, _, _, _ = _load_torch_runtime()
-    components = resolve_training_components(ir_graph)
-    dataset_params = components.dataset_node.params if components.dataset_node else {}
-    dataloader_params = components.dataloader_node.params if components.dataloader_node else {}
-    loss_params = components.loss_node.params if components.loss_node else {}
-    optimizer_params = components.optimizer_node.params if components.optimizer_node else {}
-    trainer_params = components.trainer_node.params if components.trainer_node else {}
-    metric_params = components.metric_node.params if components.metric_node else {}
-    epochs = int(trainer_params.get("epochs", 1))
-    device = _resolve_device(trainer_params.get("device", "cpu"))
-    started_at = datetime.now(timezone.utc)
-    started_at_iso = started_at.isoformat()
-    started_perf = perf_counter()
-
-    dataset_bundle = build_runtime_dataset(ir_graph)
-    warnings = list(dataset_bundle.warnings)
-    dataloader = build_runtime_dataloader(ir_graph, dataset_bundle.dataset)
-    model = build_runtime_model(ir_graph).to(device)
-    criterion = build_runtime_loss(ir_graph)
-    optimizer = build_runtime_optimizer(ir_graph, model)
-    num_classes = get_num_classes(ir_graph)
-    logs: list[dict[str, float | int | None]] = []
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        running_loss = 0.0
-        running_accuracy = 0.0
-        batch_count = 0
-
-        for inputs, labels in dataloader:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            optimizer.zero_grad()
-            outputs = model(inputs)
-
-            if isinstance(criterion, nn.MSELoss):
-                targets = torch.nn.functional.one_hot(labels, num_classes=num_classes).float()
-                loss = criterion(outputs, targets)
-            else:
-                outputs = _normalize_classification_outputs(outputs)
-                loss = criterion(outputs, labels)
-
-            loss.backward()
-            optimizer.step()
-
-            running_loss += float(loss.item())
-            accuracy = _maybe_accuracy(components.metric_node, outputs, labels)
-            if accuracy is not None:
-                running_accuracy += accuracy
-            batch_count += 1
-
-        logs.append(
-            {
-                "epoch": epoch,
-                "loss": running_loss / max(batch_count, 1),
-                "accuracy": (running_accuracy / batch_count) if components.metric_node and batch_count else None,
-            }
-        )
-
-    completed_at_iso = datetime.now(timezone.utc).isoformat()
-    metadata = TrainingRunMetadataPayload(
-        project_name=project_name,
-        requested_dataset_name=str(dataset_params.get("datasetName", dataset_bundle.requested_name)),
-        dataset_used=dataset_bundle.used_name,
-        dataset_size=len(dataset_bundle.dataset),
-        image_size=dataset_bundle.image_size,
-        num_classes=dataset_bundle.num_classes,
-        train_split=dataset_bundle.train_split,
-        batch_size=int(dataloader_params.get("batchSize", 32)),
-        shuffle=bool(dataloader_params.get("shuffle", True)),
-        num_workers=int(dataloader_params.get("numWorkers", 0)),
-        epochs=epochs,
-        device=str(device),
-        loss_type=str(loss_params.get("lossType", "CrossEntropyLoss")),
-        optimizer_type=str(optimizer_params.get("optimizerType", "Adam")),
-        learning_rate=float(optimizer_params.get("lr", 0.001)),
-        weight_decay=float(optimizer_params.get("weightDecay", 0.0)),
-        momentum=float(optimizer_params.get("momentum", 0.0)) if str(optimizer_params.get("optimizerType", "Adam")) == "SGD" else None,
-        metric_type=str(metric_params.get("metricType")) if components.metric_node else None,
-        started_at=started_at_iso,
-        completed_at=completed_at_iso,
-        duration_seconds=round(perf_counter() - started_perf, 4),
-        run_directory="",
-        weights_path="",
-        logs_path="",
-        summary_path="",
-    )
-
-    from app.services.diagnostics import build_training_insights
-
-    insights_payload = build_training_insights(
-        diagnostics=diagnostics_payload,
-        logs=logs,
-        status="completed",
-        runtime_messages=warnings,
-        training_metadata=asdict(metadata),
-    )
-
-    try:
-        metadata = _persist_training_artifacts(
-            model,
-            logs,
-            metadata,
-            warnings,
-            diagnostics=diagnostics_payload.model_dump(by_alias=True) if diagnostics_payload is not None else None,
-            insights=insights_payload.model_dump(by_alias=True),
-        )
-    except Exception as exc:
-        warnings.append(f"Training artifacts could not be fully persisted: {exc}")
-
-    return "completed", logs, warnings, asdict(metadata), insights_payload.model_dump(by_alias=True)
-
-
 # ---------------------------------------------------------------------------
-# Real-dataset runtime overrides for the current phase.
-# The latest definitions below intentionally replace the earlier minimal
-# teaching-only runtime while preserving import compatibility.
+# Dataset-aware runtime for the current training phase.
 # ---------------------------------------------------------------------------
 
 from app.services.dataset_inspection import (
@@ -877,6 +638,8 @@ def run_training(
     ir_graph: IRGraph,
     project_name: str = "Untitled Project",
     diagnostics_payload: Any | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[str, list[dict[str, float | int | None]], list[str], dict[str, object] | None, dict[str, object] | None]:
     """Execute the synchronous training loop for builtin and image-folder datasets."""
 
@@ -904,13 +667,44 @@ def run_training(
     num_classes = dataset_bundle.num_classes or get_num_classes(ir_graph)
     logs: list[dict[str, float | int | None]] = []
 
+    def is_cancelled() -> bool:
+        return bool(should_cancel and should_cancel())
+
+    def build_cancelled_response() -> tuple[
+        str,
+        list[dict[str, float | int | None]],
+        list[str],
+        None,
+        dict[str, object],
+    ]:
+        cancel_messages = [*warnings, "Training was cancelled before completion."]
+        from app.services.diagnostics import build_training_insights
+
+        insights_payload = build_training_insights(
+            diagnostics=diagnostics_payload,
+            logs=logs,
+            status="cancelled",
+            runtime_messages=cancel_messages,
+            training_metadata=None,
+        )
+        return "cancelled", logs, cancel_messages, None, insights_payload.model_dump(by_alias=True)
+
+    if is_cancelled():
+        return build_cancelled_response()
+
     for epoch in range(1, epochs + 1):
+        if is_cancelled():
+            return build_cancelled_response()
+
         model.train()
         running_loss = 0.0
         running_accuracy = 0.0
         batch_count = 0
 
         for inputs, labels in dataloader:
+            if is_cancelled():
+                return build_cancelled_response()
+
             inputs = inputs.to(device)
             labels = labels.to(device)
 
@@ -933,13 +727,22 @@ def run_training(
                 running_accuracy += accuracy
             batch_count += 1
 
-        logs.append(
-            {
-                "epoch": epoch,
-                "loss": running_loss / max(batch_count, 1),
-                "accuracy": (running_accuracy / batch_count) if components.metric_node and batch_count else None,
-            }
-        )
+        epoch_log = {
+            "epoch": epoch,
+            "loss": running_loss / max(batch_count, 1),
+            "accuracy": (running_accuracy / batch_count) if components.metric_node and batch_count else None,
+        }
+        logs.append(epoch_log)
+        if progress_callback:
+            progress_callback(
+                {
+                    "status": "running",
+                    "epoch": epoch,
+                    "epochs": epochs,
+                    "progress": epoch / max(epochs, 1),
+                    "log": epoch_log,
+                }
+            )
 
     completed_at_iso = datetime.now(timezone.utc).isoformat()
     metadata = TrainingRunMetadataPayload(

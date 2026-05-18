@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -381,3 +382,64 @@ def test_run_training_blocks_when_diagnostics_fail():
     assert data["trainingMetadata"] is None
     assert data["diagnostics"]["ok"] is False
     assert data["insights"]["failureExplanation"]
+
+
+def wait_for_training_job(job_id: str) -> dict:
+    data = {}
+    for _ in range(80):
+        response = client.get(f"/training-jobs/{job_id}")
+        assert response.status_code == 200
+        data = response.json()
+        if data["status"] in {"completed", "failed", "cancelled"}:
+            return data
+        time.sleep(0.1)
+    return data
+
+
+def test_training_job_lifecycle_completes(monkeypatch):
+    runs_dir = Path(__file__).resolve().parents[2] / ".test_training_runs" / "job_lifecycle"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("VMB_TRAINING_RUNS_DIR", str(runs_dir))
+
+    create_response = client.post("/training-jobs", json=build_phase2_payload())
+
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["jobId"]
+    assert created["status"] in {"queued", "running"}
+    assert created["diagnostics"]["ok"] is True
+
+    data = wait_for_training_job(created["jobId"])
+    assert data["status"] == "completed"
+    assert data["ok"] is True
+    assert data["progress"] == 1.0
+    assert len(data["logs"]) == 1
+    assert data["trainingMetadata"]["projectName"] == "Phase 2 Training Example"
+    assert Path(data["trainingMetadata"]["weightsPath"]).exists()
+
+
+def test_training_job_fails_when_diagnostics_fail():
+    response = client.post("/training-jobs", json=build_phase2_payload(linear_out_features=1))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert data["ok"] is False
+    assert data["logs"] == []
+    assert data["diagnostics"]["ok"] is False
+    assert data["insights"]["failureExplanation"]
+
+
+def test_training_job_cancel_request_is_recorded():
+    payload = build_phase2_payload()
+    payload["project"]["nodes"][-1]["data"]["params"]["epochs"] = 5
+    create_response = client.post("/training-jobs", json=payload)
+
+    assert create_response.status_code == 200
+    job_id = create_response.json()["jobId"]
+
+    cancel_response = client.post(f"/training-jobs/{job_id}/cancel")
+
+    assert cancel_response.status_code == 200
+    data = cancel_response.json()
+    assert data["cancelRequested"] is True or data["status"] == "cancelled"

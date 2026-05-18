@@ -12,6 +12,7 @@ import type {
   ProjectGraph,
   TrainingDiagnosticsResponse,
   RunTrainingResponse,
+  TrainingJobResponse,
   ValidateGraphResponse,
 } from '../types';
 
@@ -74,6 +75,21 @@ export async function generateTrainingCode(project: ProjectGraph): Promise<Gener
 /** Execute the Phase 2 training loop */
 export async function runTraining(project: ProjectGraph): Promise<RunTrainingResponse> {
   return post('/run-training', { project });
+}
+
+/** Create an asynchronous training job */
+export async function createTrainingJob(project: ProjectGraph): Promise<TrainingJobResponse> {
+  return post('/training-jobs', { project });
+}
+
+/** Poll an asynchronous training job */
+export async function getTrainingJob(jobId: string): Promise<TrainingJobResponse> {
+  return get(`/training-jobs/${jobId}`);
+}
+
+/** Request best-effort cancellation for an asynchronous training job */
+export async function cancelTrainingJob(jobId: string): Promise<TrainingJobResponse> {
+  return post(`/training-jobs/${jobId}/cancel`, {});
 }
 
 /** Diagnose a training graph before running it */

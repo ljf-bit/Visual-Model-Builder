@@ -1,5 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 
+import { useLanguage } from '../../hooks/useLanguage';
+import { getParamHelpText, getParamLabel, translateKnownMessage } from '../../i18n';
 import { getNodeBehavior } from '../../registry';
 import { inspectDataset } from '../../services';
 import { useAppStore } from '../../store';
@@ -30,6 +32,23 @@ function formatSplitSummary(splits: Record<string, number>): string {
   return ['train', 'val', 'test']
     .map((key) => `${key}: ${splits[key] ?? 0}`)
     .join(' | ');
+}
+
+function InspectorNotice({
+  tone,
+  label,
+  children,
+}: {
+  tone: 'error' | 'warning';
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`inspector-notice inspector-notice--${tone}`}>
+      <span className="inspector-notice-label">{label}</span>
+      <span>{children}</span>
+    </div>
+  );
 }
 
 function buildParamPatch(
@@ -161,6 +180,7 @@ const Inspector: React.FC = () => {
   const updateNodeParams = useAppStore((state) => state.updateNodeParams);
   const [isInspecting, setIsInspecting] = useState(false);
   const [datasetPreview, setDatasetPreview] = useState<InspectDatasetResponse | null>(null);
+  const { language, t } = useLanguage();
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const behavior = selectedNode ? getNodeBehavior(selectedNode.type) : undefined;
@@ -219,8 +239,8 @@ const Inspector: React.FC = () => {
   if (!selectedNode || !behavior) {
     return (
       <aside className="inspector">
-        <h2 className="inspector-title">Inspector</h2>
-        <p className="inspector-empty">Select a node to inspect its parameters.</p>
+        <h2 className="inspector-title">{t('inspector.title')}</h2>
+        <p className="inspector-empty">{t('inspector.empty')}</p>
       </aside>
     );
   }
@@ -231,7 +251,7 @@ const Inspector: React.FC = () => {
 
   return (
     <aside className="inspector">
-      <h2 className="inspector-title">Inspector</h2>
+      <h2 className="inspector-title">{t('inspector.title')}</h2>
       <div className="inspector-node-header">
         <span className="inspector-node-type">{behavior.template.displayName}</span>
         <span className="inspector-node-id">{selectedNode.id}</span>
@@ -239,11 +259,11 @@ const Inspector: React.FC = () => {
 
       <div className="inspector-shapes">
         <div className="inspector-shape">
-          <span>Input Shape:</span>
+          <span>{t('inspector.inputShape')}</span>
           <code>{selectedNode.data.inferredInputShape ? JSON.stringify(selectedNode.data.inferredInputShape) : '--'}</code>
         </div>
         <div className="inspector-shape">
-          <span>Output Shape:</span>
+          <span>{t('inspector.outputShape')}</span>
           <code>{selectedNode.data.inferredOutputShape ? JSON.stringify(selectedNode.data.inferredOutputShape) : '--'}</code>
         </div>
       </div>
@@ -251,9 +271,9 @@ const Inspector: React.FC = () => {
       {selectedNode.data.errors && selectedNode.data.errors.length > 0 ? (
         <div className="inspector-errors">
           {selectedNode.data.errors.map((error, index) => (
-            <div key={`${selectedNode.id}-${index}`} className="inspector-error">
-              {error}
-            </div>
+            <InspectorNotice key={`${selectedNode.id}-${index}`} tone="error" label={t('inspector.error')}>
+              {translateKnownMessage(error, language)}
+            </InspectorNotice>
           ))}
         </div>
       ) : null}
@@ -261,75 +281,79 @@ const Inspector: React.FC = () => {
       {selectedNode.type === 'Dataset' ? (
         <div className="inspector-errors">
           <div className="inspector-node-header">
-            <span className="inspector-node-type">Dataset Preview</span>
-            <span className="inspector-node-id">{isInspecting ? 'Inspecting...' : datasetPreview?.success ? 'Ready' : 'Pending'}</span>
+            <span className="inspector-node-type">{t('inspector.datasetPreview')}</span>
+            <span className="inspector-node-id">
+              {isInspecting ? t('inspector.inspecting') : datasetPreview?.success ? t('inspector.ready') : t('inspector.pending')}
+            </span>
           </div>
           {datasetPreview ? (
             <>
               <div className="inspector-shapes">
                 <div className="inspector-shape">
-                  <span>Mode:</span>
+                  <span>{t('inspector.mode')}</span>
                   <code>{datasetPreview.datasetMode}</code>
                 </div>
                 <div className="inspector-shape">
-                  <span>Split:</span>
+                  <span>{t('inspector.split')}</span>
                   <code>{datasetPreview.resolvedSplitMode}</code>
                 </div>
                 <div className="inspector-shape">
-                  <span>Samples:</span>
+                  <span>{t('inspector.samples')}</span>
                   <code>{datasetPreview.sampleCount}</code>
                 </div>
                 <div className="inspector-shape">
-                  <span>Classes:</span>
+                  <span>{t('inspector.classes')}</span>
                   <code>{datasetPreview.numClasses}</code>
                 </div>
                 <div className="inspector-shape">
-                  <span>Splits:</span>
+                  <span>{t('inspector.splits')}</span>
                   <code>{formatSplitSummary(datasetPreview.splits)}</code>
                 </div>
                 <div className="inspector-shape">
-                  <span>Input:</span>
+                  <span>{t('inspector.input')}</span>
                   <code>{datasetPreview.inputShape ? JSON.stringify(datasetPreview.inputShape) : '--'}</code>
                 </div>
               </div>
 
               {datasetPreview.classNames.length > 0 ? (
                 <div className="inspector-shape">
-                  <span>Class Names:</span>
+                  <span>{t('inspector.classNames')}</span>
                   <code>{datasetPreview.classNames.join(', ')}</code>
                 </div>
               ) : null}
 
               {datasetPreview.errors.map((error) => (
-                <div key={`dataset-preview-error-${error}`} className="inspector-error">
-                  {error}
-                </div>
+                <InspectorNotice key={`dataset-preview-error-${error}`} tone="error" label={t('inspector.error')}>
+                  {translateKnownMessage(error, language)}
+                </InspectorNotice>
               ))}
               {datasetPreview.warnings.map((warning) => (
-                <div key={`dataset-preview-warning-${warning}`} className="inspector-error">
-                  {warning}
-                </div>
+                <InspectorNotice key={`dataset-preview-warning-${warning}`} tone="warning" label={t('inspector.warning')}>
+                  {translateKnownMessage(warning, language)}
+                </InspectorNotice>
               ))}
             </>
           ) : (
-            <div className="inspector-error">Configure the dataset fields to load a preview.</div>
+            <InspectorNotice tone="warning" label={t('inspector.warning')}>
+              {t('inspector.configureDataset')}
+            </InspectorNotice>
           )}
         </div>
       ) : null}
 
       {selectedNode.type === 'DataLoader' && Number(selectedParams.numWorkers ?? 0) === 0 ? (
         <div className="inspector-errors">
-          <div className="inspector-error">
-            `persistentWorkers` and `prefetchFactor` are automatically ignored while `numWorkers` is 0.
-          </div>
+          <InspectorNotice tone="warning" label={t('inspector.warning')}>
+            {t('inspector.dataloaderWorkersNotice')}
+          </InspectorNotice>
         </div>
       ) : null}
 
       <div className="inspector-params">
         {visibleParams.map((param) => (
           <div key={param.key} className="inspector-param">
-            <label className="inspector-param-label" title={param.helpText}>
-              {param.label}
+            <label className="inspector-param-label" title={getParamHelpText(selectedNode.type, param, language)}>
+              {getParamLabel(selectedNode.type, param, language)}
             </label>
             {renderParamControl(param, selectedParams, handleParamChange)}
           </div>

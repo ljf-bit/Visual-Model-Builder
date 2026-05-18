@@ -1,16 +1,12 @@
 import React from 'react';
 
+import { useLanguage } from '../../hooks/useLanguage';
+import { getNodeDescription } from '../../i18n';
 import { getNodesByCategory } from '../../registry';
-
-const categoryLabels: Record<string, string> = {
-  io: 'IO',
-  layer: 'Layer',
-  activation: 'Activation',
-  train: 'Training',
-};
 
 const Palette: React.FC = () => {
   const grouped = getNodesByCategory();
+  const { language, t } = useLanguage();
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
     event.dataTransfer.setData('application/vmb-node-type', nodeType);
@@ -19,29 +15,30 @@ const Palette: React.FC = () => {
 
   return (
     <aside className="palette">
-      <h2 className="palette-title">Palette</h2>
+      <h2 className="palette-title">{t('palette.title')}</h2>
       {Object.entries(grouped).map(([category, behaviors]) => (
         <div key={category} className="palette-category">
-          <h3 className="palette-category-title">{categoryLabels[category] ?? category}</h3>
+          <h3 className="palette-category-title">{t(`palette.category.${category}`)}</h3>
           {category === 'train' ? (
             <div className="palette-guide">
-              <div className="palette-guide-title">Recommended Build Order</div>
-              <div className="palette-guide-step">1. `Dataset` → `DataLoader`</div>
-              <div className="palette-guide-step">2. `DataLoader` → `Input`</div>
-              <div className="palette-guide-step">3. Model `Output` → `Loss`</div>
-              <div className="palette-guide-step">4. `Optimizer` + `Loss` + optional `Metric` → `Trainer`</div>
+              <div className="palette-guide-title">{t('palette.buildOrder')}</div>
+              <div className="palette-guide-step">{t('palette.step.dataset')}</div>
+              <div className="palette-guide-step">{t('palette.step.input')}</div>
+              <div className="palette-guide-step">{t('palette.step.loss')}</div>
+              <div className="palette-guide-step">{t('palette.step.trainer')}</div>
             </div>
           ) : null}
           <div className="palette-nodes">
             {behaviors.map((behavior) => (
               <div
                 key={behavior.template.type}
-                className="palette-node"
+                className={`palette-node palette-node--${category}`}
                 draggable
                 onDragStart={(event) => onDragStart(event, behavior.template.type)}
-                title={behavior.template.description}
+                title={getNodeDescription(behavior.template.type, behavior.template.description, language)}
               >
-                {behavior.template.displayName}
+                <span className="palette-node-icon" aria-hidden="true" />
+                <span>{behavior.template.displayName}</span>
               </div>
             ))}
           </div>

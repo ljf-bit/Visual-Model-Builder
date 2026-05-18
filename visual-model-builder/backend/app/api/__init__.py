@@ -1,98 +1,6 @@
-'''
-"""
-API route definitions.
-
-All REST endpoints are registered here and mounted in main.py.
-"""
-
-from fastapi import APIRouter
-from app.schemas.requests import ProjectRequest
-from app.schemas.responses import (
-    ValidateGraphResponse,
-    InferShapesResponse,
-    GenerateCodeResponse,
-)
-from app.services.graph_ir import project_to_ir
-from app.services.validator import validate_graph as do_validate_graph
-from app.services.shape_infer import infer_graph_shapes
-from app.services.codegen import generate_model_code as do_generate_code
-
-router = APIRouter()
-
-
-@router.post("/validate-graph", response_model=ValidateGraphResponse)
-async def validate_graph(request: ProjectRequest):
-    """
-    Validate the project graph structure.
-    """
-    ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph)
-    
-    return ValidateGraphResponse(
-        ok=len(global_errors) == 0 and sum(len(errs) for errs in node_errors.values()) == 0,
-        global_errors=global_errors,
-        node_errors=node_errors,
-    )
-
-
-@router.post("/infer-shapes", response_model=InferShapesResponse)
-async def infer_shapes(request: ProjectRequest):
-    """
-    Infer input/output shapes for all nodes in the graph.
-    """
-    ir_graph = project_to_ir(request.project)
-    node_results = infer_graph_shapes(ir_graph)
-    
-    # Check if there are any errors in any node's inference
-    ok = all(len(res.errors) == 0 for res in node_results.values()) if node_results else False
-    
-    return InferShapesResponse(
-        ok=ok,
-        nodes=node_results,
-    )
-
-
-@router.post("/generate-code", response_model=GenerateCodeResponse)
-async def generate_code(request: ProjectRequest):
-    """
-    Generate PyTorch model code from the project graph.
-    """
-    ir_graph = project_to_ir(request.project)
-    global_errors, node_errors = do_validate_graph(ir_graph)
-    node_results = infer_graph_shapes(ir_graph)
-    
-    # Collect all errors
-    all_errors = list(global_errors)
-    for errs in node_errors.values():
-        all_errors.extend(errs)
-    for res in node_results.values():
-        all_errors.extend(res.errors)
-        
-    if all_errors:
-        return GenerateCodeResponse(
-            ok=False,
-            code="",
-            errors=all_errors
-        )
-        
-    code = do_generate_code(ir_graph)
-    if code.startswith("# Error"):
-        return GenerateCodeResponse(
-            ok=False,
-            code="",
-            errors=["生成代码失败，图结构不合法"]
-        )
-        
-    return GenerateCodeResponse(
-        ok=True,
-        code=code,
-        errors=[],
-    )
-'''
-
 """API route definitions."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.schemas.requests import InspectDatasetRequest, ProjectRequest
 from app.schemas.responses import (
@@ -101,6 +9,7 @@ from app.schemas.responses import (
     InspectDatasetResponse,
     RunTrainingResponse,
     TrainingDiagnosticsResponse,
+    TrainingJobResponse,
     ValidateGraphResponse,
 )
 from app.services.codegen import generate_code as do_generate_code, generate_model_code as do_generate_model_code
@@ -112,6 +21,7 @@ from app.services.diagnostics import (
 from app.services.graph_ir import project_to_ir
 from app.services.shape_infer import infer_graph_shapes
 from app.services.training import run_training as do_run_training
+from app.services.training_jobs import training_job_store
 from app.services.validator import validate_graph as do_validate_graph
 
 router = APIRouter()
@@ -152,7 +62,7 @@ async def infer_shapes(request: ProjectRequest):
 
 @router.post("/generate-code", response_model=GenerateCodeResponse)
 async def generate_code(request: ProjectRequest):
-    """Generate PyTorch code from the project graph."""
+    """Generate PyTorch model code from the project graph."""
 
     ir_graph = project_to_ir(request.project)
     global_errors, node_errors, _warnings = do_validate_graph(ir_graph)
@@ -212,7 +122,7 @@ async def inspect_dataset(request: InspectDatasetRequest):
 
 @router.post("/run-training", response_model=RunTrainingResponse)
 async def run_training(request: ProjectRequest):
-    """Execute the minimal synchronous Phase 2 training loop."""
+    """Execute the synchronous training loop for compatibility."""
 
     ir_graph = project_to_ir(request.project)
     diagnostics = do_diagnose_training_graph(ir_graph)
@@ -282,3 +192,30 @@ async def run_training(request: ProjectRequest):
         insights=insights,
         training_metadata=training_metadata,
     )
+
+
+@router.post("/training-jobs", response_model=TrainingJobResponse)
+async def create_training_job(request: ProjectRequest):
+    """Create an asynchronous training job and return its initial state."""
+
+    return training_job_store.create(request.project)
+
+
+@router.get("/training-jobs/{job_id}", response_model=TrainingJobResponse)
+async def get_training_job(job_id: str):
+    """Return the latest state for a training job."""
+
+    job = training_job_store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Training job not found.")
+    return job
+
+
+@router.post("/training-jobs/{job_id}/cancel", response_model=TrainingJobResponse)
+async def cancel_training_job(job_id: str):
+    """Request best-effort cancellation for a queued or running training job."""
+
+    job = training_job_store.cancel(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Training job not found.")
+    return job

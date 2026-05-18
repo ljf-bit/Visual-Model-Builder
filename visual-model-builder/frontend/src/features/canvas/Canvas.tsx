@@ -30,54 +30,51 @@ import type { GraphEdge, GraphNode, GraphNodeData } from '../../types';
 const GenericNode: React.FC<NodeProps> = ({ data, selected }) => {
   const behavior = getNodeBehavior(String(data.type ?? data.label));
   const category = behavior?.template.category ?? 'layer';
-  const accent =
-    category === 'train'
-      ? '#22c55e'
-      : category === 'io'
-        ? '#38bdf8'
-        : category === 'activation'
-          ? '#f59e0b'
-          : 'var(--color-accent)';
+  const errors = Array.isArray(data.errors) ? data.errors.filter((error): error is string => typeof error === 'string') : [];
+  const outputShape = Array.isArray(data.inferredOutputShape) ? data.inferredOutputShape.join('x') : null;
 
   return (
     <div
-      className={`react-flow__node-default ${selected ? 'selected' : ''}`}
-      style={{
-        background: 'var(--color-bg-secondary)',
-        color: 'var(--color-text-primary)',
-        borderColor: selected ? accent : 'var(--color-border)',
-        borderRadius: '8px',
-        padding: '10px 15px',
-        minWidth: '176px',
-      }}
+      className={`vmb-node vmb-node--${category} ${selected ? 'selected' : ''} ${errors.length > 0 ? 'has-error' : ''}`}
     >
       {behavior?.template.inputPorts ? (
-        <Handle type="target" position={Position.Left} style={{ background: '#555' }} />
+        <Handle type="target" position={Position.Left} className="vmb-node-handle" />
       ) : null}
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{String(data.label)}</div>
-        <span
-          style={{
-            fontSize: '10px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            color: accent,
-          }}
-        >
-          {category}
-        </span>
+      <div className="vmb-node-header">
+        <span className="vmb-node-icon" aria-hidden="true" />
+        <div className="vmb-node-title">{String(data.label)}</div>
+        <span className="vmb-node-category">{category}</span>
       </div>
-      {'errors' in data && Array.isArray(data.errors) && data.errors.length > 0 ? (
-        <div style={{ marginTop: '8px', fontSize: '11px', color: '#fca5a5' }}>{data.errors[0]}</div>
+      <div className="vmb-node-meta">
+        <span>{behavior?.template.inputPorts ?? 0} in</span>
+        <span>{behavior?.template.outputPorts ?? 0} out</span>
+        {outputShape ? <strong>{outputShape}</strong> : null}
+      </div>
+      {errors.length > 0 ? (
+        <div className="vmb-node-error">{errors[0]}</div>
       ) : null}
       {behavior?.template.outputPorts ? (
-        <Handle type="source" position={Position.Right} style={{ background: '#555' }} />
+        <Handle type="source" position={Position.Right} className="vmb-node-handle" />
       ) : null}
     </div>
   );
 };
 
 const nodeTypes = Object.fromEntries(Object.keys(nodeRegistry).map((key) => [key, GenericNode]));
+
+function getMiniMapNodeColor(node: Node<GraphNodeData>): string {
+  const behavior = getNodeBehavior(node.type ?? String(node.data.type ?? node.data.label));
+  if (behavior?.template.category === 'train') {
+    return '#14b8a6';
+  }
+  if (behavior?.template.category === 'activation') {
+    return '#f59e0b';
+  }
+  if (behavior?.template.category === 'io') {
+    return '#22c55e';
+  }
+  return '#3b82f6';
+}
 
 function isFinitePosition(position: GraphNode['position']): boolean {
   return Number.isFinite(position.x) && Number.isFinite(position.y);
@@ -277,19 +274,16 @@ const Canvas: React.FC = () => {
       >
         <Background />
         <Controls />
-        <MiniMap />
+        <MiniMap
+          className="canvas-minimap"
+          nodeColor={getMiniMapNodeColor}
+          maskColor="rgba(8, 13, 20, 0.72)"
+          bgColor="rgba(15, 23, 42, 0.92)"
+          pannable
+          zoomable
+        />
         <Panel position="top-right">
-          <button
-            onClick={() => useAppStore.getState().resetProject()}
-            style={{
-              background: 'var(--color-bg-hover)',
-              color: 'var(--color-text-primary)',
-              border: '1px solid var(--color-border)',
-              padding: '6px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
-          >
+          <button className="canvas-clear-btn" onClick={() => useAppStore.getState().resetProject()}>
             Clear Canvas
           </button>
         </Panel>

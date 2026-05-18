@@ -142,6 +142,154 @@ function createEmptyProject(name = 'Untitled Project'): ProjectGraph {
   };
 }
 
+function createStarterProject(): ProjectGraph {
+  const now = new Date().toISOString();
+  const nodes: GraphNode[] = [
+    {
+      id: 'Dataset_1',
+      type: 'Dataset',
+      position: { x: -20, y: 260 },
+      data: {
+        label: 'Dataset',
+        params: {
+          datasetMode: 'builtin',
+          datasetName: 'FakeData',
+          trainSplit: true,
+          rootPath: '',
+          splitMode: 'predefined',
+          trainRatio: 0.7,
+          valRatio: 0.2,
+          testRatio: 0.1,
+          shuffleBeforeSplit: true,
+          imageSize: 28,
+          colorMode: 'grayscale',
+          normalize: false,
+          mean: [0.5],
+          std: [0.5],
+          augmentationEnabled: false,
+          csvPath: '',
+          labelColumn: 'label',
+          pathColumn: 'image_path',
+          featureColumns: [],
+          taskType: 'classification',
+          numClasses: 10,
+        },
+      },
+    },
+    {
+      id: 'DataLoader_1',
+      type: 'DataLoader',
+      position: { x: 210, y: 260 },
+      data: {
+        label: 'DataLoader',
+        params: {
+          batchSize: 32,
+          shuffle: true,
+          numWorkers: 0,
+          dropLast: false,
+          pinMemory: false,
+          persistentWorkers: false,
+          prefetchFactor: 2,
+          collateFnType: 'default',
+        },
+      },
+    },
+    {
+      id: 'Input_1',
+      type: 'Input',
+      position: { x: 40, y: 40 },
+      data: { label: 'Input', params: { inputShape: [1, 28, 28] } },
+    },
+    {
+      id: 'Conv2d_1',
+      type: 'Conv2d',
+      position: { x: 270, y: 40 },
+      data: {
+        label: 'Conv2d',
+        params: { in_channels: 1, out_channels: 16, kernel_size: 3, stride: 1, padding: 1 },
+      },
+    },
+    {
+      id: 'ReLU_1',
+      type: 'ReLU',
+      position: { x: 500, y: 40 },
+      data: { label: 'ReLU', params: { inplace: false } },
+    },
+    {
+      id: 'MaxPool2d_1',
+      type: 'MaxPool2d',
+      position: { x: 730, y: 40 },
+      data: { label: 'MaxPool2d', params: { kernel_size: 2, stride: 2, padding: 0 } },
+    },
+    {
+      id: 'Flatten_1',
+      type: 'Flatten',
+      position: { x: 960, y: 40 },
+      data: { label: 'Flatten', params: { start_dim: 0, end_dim: -1 } },
+    },
+    {
+      id: 'Linear_1',
+      type: 'Linear',
+      position: { x: 1190, y: 40 },
+      data: { label: 'Linear', params: { in_features: 3136, out_features: 10, bias: true } },
+    },
+    {
+      id: 'Output_1',
+      type: 'Output',
+      position: { x: 1420, y: 40 },
+      data: { label: 'Output', params: {} },
+    },
+    {
+      id: 'Loss_1',
+      type: 'Loss',
+      position: { x: 1650, y: 40 },
+      data: { label: 'Loss', params: { lossType: 'CrossEntropyLoss' } },
+    },
+    {
+      id: 'Optimizer_1',
+      type: 'Optimizer',
+      position: { x: 1420, y: 260 },
+      data: { label: 'Optimizer', params: { optimizerType: 'Adam', lr: 0.001, weightDecay: 0, momentum: 0.9 } },
+    },
+    {
+      id: 'Metric_1',
+      type: 'Metric',
+      position: { x: 1650, y: 260 },
+      data: { label: 'Metric', params: { metricType: 'Accuracy' } },
+    },
+    {
+      id: 'Trainer_1',
+      type: 'Trainer',
+      position: { x: 1880, y: 150 },
+      data: { label: 'Trainer', params: { epochs: 2, device: 'cpu', logInterval: 1, validateEveryEpoch: false } },
+    },
+  ];
+
+  return {
+    version: '2.0.0',
+    metadata: {
+      name: 'Portfolio CNN Training Demo',
+      createdAt: now,
+      updatedAt: now,
+    },
+    nodes,
+    edges: [
+      { id: 'e1', source: 'Dataset_1', target: 'DataLoader_1' },
+      { id: 'e2', source: 'DataLoader_1', target: 'Input_1' },
+      { id: 'e3', source: 'Input_1', target: 'Conv2d_1' },
+      { id: 'e4', source: 'Conv2d_1', target: 'ReLU_1' },
+      { id: 'e5', source: 'ReLU_1', target: 'MaxPool2d_1' },
+      { id: 'e6', source: 'MaxPool2d_1', target: 'Flatten_1' },
+      { id: 'e7', source: 'Flatten_1', target: 'Linear_1' },
+      { id: 'e8', source: 'Linear_1', target: 'Output_1' },
+      { id: 'e9', source: 'Output_1', target: 'Loss_1' },
+      { id: 'e10', source: 'Loss_1', target: 'Trainer_1' },
+      { id: 'e11', source: 'Optimizer_1', target: 'Trainer_1' },
+      { id: 'e12', source: 'Metric_1', target: 'Trainer_1' },
+    ],
+  };
+}
+
 function createEmptyGeneratedCode(): Record<GeneratedCodeMode, string> {
   return {
     model: '',
@@ -252,7 +400,7 @@ function findNonOverlappingPosition(basePosition: GraphNode['position'], nodes: 
 // ============================================================
 
 export const useAppStore = create<AppState>((set, get) => ({
-  project: createEmptyProject(),
+  project: createStarterProject(),
   selectedNodeId: null,
   copiedNode: null,
   clipboardPasteCount: 0,
