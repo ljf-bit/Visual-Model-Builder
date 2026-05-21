@@ -295,3 +295,94 @@ export interface TrainingJobResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+// ============================================================
+// Auto-Fix Types
+// ============================================================
+
+export type AutoFixActionKind = 'update_node_params' | 'add_edge' | 'insert_node_between';
+
+export interface AutoFixAction {
+  kind: AutoFixActionKind;
+  nodeId?: string;
+  params?: Record<string, unknown>;
+  edge?: GraphEdge;
+  sourceId?: string;
+  targetId?: string;
+  node?: GraphNode;
+}
+
+export interface AutoFixSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  category: 'shape' | 'dataset' | 'training' | 'runtime';
+  safe: boolean;
+  targetNodeId?: string;
+  actions: AutoFixAction[];
+  previewLines: string[];
+}
+
+// ============================================================
+// Experiment Compare Types
+// ============================================================
+
+export interface ExperimentMetricSummary {
+  firstLoss: number | null;
+  finalLoss: number | null;
+  bestLoss: number | null;
+  finalAccuracy: number | null;
+  bestAccuracy: number | null;
+  epochCount: number;
+}
+
+export interface ExperimentRecord {
+  id: string;
+  projectName: string;
+  createdAt: string;
+  status: string;
+  ok: boolean;
+  datasetName: string;
+  datasetMode: string;
+  optimizerType: string;
+  learningRate: number | null;
+  batchSize: number | null;
+  epochs: number | null;
+  durationSeconds: number | null;
+  graphSignature: string;
+  metrics: ExperimentMetricSummary;
+  logs: TrainingEpochLog[];
+  diagnostics?: TrainingDiagnosticsResponse | null;
+  insights?: TrainingInsightsResponse | null;
+  trainingMetadata?: TrainingRunMetadata | null;
+}
+
+// ============================================================
+// Dataset Wizard Types
+// ============================================================
+
+export type DatasetWizardStep = 'source' | 'preprocess' | 'split' | 'preview';
+
+export interface DatasetWizardDraft {
+  datasetMode: string;
+  datasetName: string;
+  trainSplit: boolean;
+  rootPath: string;
+  splitMode: string;
+  trainRatio: number;
+  valRatio: number;
+  testRatio: number;
+  shuffleBeforeSplit: boolean;
+  csvPath: string;
+  pathColumn: string;
+  labelColumn: string;
+  featureColumns: string[];
+  taskType: string;
+  imageSize: number;
+  colorMode: string;
+  normalize: boolean;
+  mean: number[];
+  std: number[];
+  augmentationEnabled: boolean;
+  numClasses: number;
+}

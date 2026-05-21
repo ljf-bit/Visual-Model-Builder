@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { buildAutoFixSuggestions } from '../autofix';
+import { ExperimentCompareView, createExperimentRecord, saveExperimentRecord } from '../experiments';
 import { hasTrainingNodes } from '../../graph/graphUtils';
 import { useLanguage } from '../../hooks/useLanguage';
 import { cancelTrainingJob, createTrainingJob, getTrainingJob } from '../../services';
@@ -36,12 +38,15 @@ const TrainingPanelV2: React.FC = () => {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState(0);
   const [cancelRequested, setCancelRequested] = useState(false);
+  const savedJobIdsRef = useRef(new Set<string>());
   const project = useAppStore((state) => state.project);
+  const activeJobProjectRef = useRef(project);
   const globalErrors = useAppStore((state) => state.globalErrors);
   const trainingResult = useAppStore((state) => state.trainingResult);
   const trainingDiagnostics = useAppStore((state) => state.trainingDiagnostics);
   const setTrainingResult = useAppStore((state) => state.setTrainingResult);
   const setTrainingDiagnostics = useAppStore((state) => state.setTrainingDiagnostics);
+  const applyAutoFixActions = useAppStore((state) => state.applyAutoFixActions);
   const trainingMode = hasTrainingNodes(project.nodes);
   const { language, t } = useLanguage();
 
@@ -70,6 +75,10 @@ const TrainingPanelV2: React.FC = () => {
     () => buildAnalysisText(trainingResult, currentDiagnostics ?? null, currentInsights, language),
     [currentDiagnostics, currentInsights, language, trainingResult],
   );
+  const autoFixSuggestions = useMemo(
+    () => buildAutoFixSuggestions(project, currentDiagnostics ?? null),
+    [currentDiagnostics, project],
+  );
   const diagnosticsTone = currentDiagnostics
     ? currentDiagnostics.ok
       ? currentDiagnostics.warnings.length > 0 ? 'warning' : 'ok'
@@ -84,6 +93,15 @@ const TrainingPanelV2: React.FC = () => {
       ? t('training.diagnosticsPending')
       : t('training.diagnosticsMissing');
   const canSaveResults = Boolean(trainingResult?.ok && trainingMetadata && trainingResult.logs.length > 0);
+
+  const persistTerminalJob = useCallback((job: TrainingJobResponse) => {
+    const result = jobToTrainingResult(job);
+    if (terminalJobStatuses.has(job.status) && !savedJobIdsRef.current.has(job.jobId)) {
+      saveExperimentRecord(createExperimentRecord(activeJobProjectRef.current, result, job.jobId));
+      savedJobIdsRef.current.add(job.jobId);
+    }
+    return result;
+  }, []);
 
   useEffect(() => {
     if (!activeJobId || !isRunning) {
@@ -103,7 +121,7 @@ const TrainingPanelV2: React.FC = () => {
         if (job.diagnostics) {
           setTrainingDiagnostics(job.diagnostics);
         }
-        setTrainingResult(jobToTrainingResult(job));
+        setTrainingResult(persistTerminalJob(job));
 
         if (terminalJobStatuses.has(job.status)) {
           setIsRunning(false);
@@ -131,19 +149,20 @@ const TrainingPanelV2: React.FC = () => {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [activeJobId, currentDiagnostics, isRunning, setTrainingDiagnostics, setTrainingResult]);
+  }, [activeJobId, currentDiagnostics, isRunning, persistTerminalJob, setTrainingDiagnostics, setTrainingResult]);
 
   const handleRunTraining = async () => {
     try {
       setIsRunning(true);
       setCancelRequested(false);
       setJobProgress(0);
+      activeJobProjectRef.current = project;
       const job = await createTrainingJob(project);
       setActiveJobId(job.jobId);
       if (job.diagnostics) {
         setTrainingDiagnostics(job.diagnostics);
       }
-      setTrainingResult(jobToTrainingResult(job));
+      setTrainingResult(persistTerminalJob(job));
       if (terminalJobStatuses.has(job.status)) {
         setIsRunning(false);
         setActiveView('analysis');
@@ -263,7 +282,7 @@ const TrainingPanelV2: React.FC = () => {
           <span style={{ width: `${Math.round(jobProgress * 100)}%` }} />
         </div>
         <div className="training-panel-tabs" role="tablist" aria-label={t('training.viewsLabel')}>
-          {(['curves', 'status', 'logs', 'analysis'] as const).map((view) => (
+          {(['curves', 'status', 'logs', 'analysis', 'compare'] as const).map((view) => (
             <button
               key={view}
               className={`training-panel-tab ${activeView === view ? 'active' : ''}`}
@@ -310,12 +329,16 @@ const TrainingPanelV2: React.FC = () => {
             trainingResult={trainingResult}
             trainingMetadata={trainingMetadata}
             trainingEvidence={trainingEvidence}
+            autoFixSuggestions={autoFixSuggestions}
+            onApplyAutoFix={applyAutoFixActions}
           />
         ) : null}
 
         {activeView === 'logs' ? <TrainingLogsView trainingResult={trainingResult} /> : null}
 
         {activeView === 'analysis' ? <TrainingAnalysisView analysis={analysis} /> : null}
+
+        {activeView === 'compare' ? <ExperimentCompareView /> : null}
       </div>
     </section>
   );

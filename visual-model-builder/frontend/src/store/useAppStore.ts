@@ -10,8 +10,10 @@
  */
 
 import { create } from 'zustand';
+import { applyAutoFixActionsToProject } from '../graph/autoFixActions';
 import { getNextNodeId, normalizeProjectGraph } from '../graph/graphUtils';
 import type {
+  AutoFixAction,
   GeneratedCodeMode,
   GraphEdge,
   GraphNode,
@@ -51,6 +53,9 @@ export interface AppState {
 
   /** Whether the project has unsaved changes */
   isDirty: boolean;
+
+  /** Whether the dataset setup wizard is visible */
+  isDatasetWizardOpen: boolean;
 
   /** Undo history for graph edits */
   historyPast: ProjectGraph[];
@@ -93,6 +98,12 @@ export interface AppState {
   /** Select a node */
   setSelectedNodeId: (nodeId: string | null) => void;
 
+  /** Open the dataset wizard */
+  openDatasetWizard: () => void;
+
+  /** Close the dataset wizard */
+  closeDatasetWizard: () => void;
+
   /** Copy the currently selected node into the internal clipboard */
   copySelectedNode: () => boolean;
 
@@ -113,6 +124,9 @@ export interface AppState {
 
   /** Set latest training diagnostics */
   setTrainingDiagnostics: (diagnostics: TrainingDiagnosticsResponse | null) => void;
+
+  /** Apply one or more deterministic graph repair actions */
+  applyAutoFixActions: (actions: AutoFixAction[]) => void;
 
   /** Sync backend feedback into nodes and reset dirty flag */
   setRemoteFeedback: (valRes: import('../types').ValidateGraphResponse, shapeRes: import('../types').InferShapesResponse) => void;
@@ -409,6 +423,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   trainingResult: null,
   trainingDiagnostics: null,
   isDirty: false,
+  isDatasetWizardOpen: false,
   historyPast: [],
   historyFuture: [],
 
@@ -430,6 +445,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         globalErrors: [],
         trainingResult: null,
         trainingDiagnostics: null,
+        isDatasetWizardOpen: false,
         historyPast: [],
         historyFuture: [],
       };
@@ -533,6 +549,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setSelectedNodeId: (nodeId) => set({ selectedNodeId: nodeId }),
 
+  openDatasetWizard: () => set({ isDatasetWizardOpen: true }),
+
+  closeDatasetWizard: () => set({ isDatasetWizardOpen: false }),
+
   copySelectedNode: () => {
     const { project, selectedNodeId } = get();
     if (!selectedNodeId) {
@@ -627,6 +647,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setTrainingDiagnostics: (diagnostics) => set({ trainingDiagnostics: diagnostics }),
 
+  applyAutoFixActions: (actions) =>
+    set((s) => {
+      if (actions.length === 0) {
+        return {};
+      }
+
+      return createProjectChangeState(
+        s,
+        applyAutoFixActionsToProject(s.project, actions),
+        {
+          selectedNodeId: s.selectedNodeId,
+          globalErrors: [],
+        },
+      );
+    }),
+
   setRemoteFeedback: (valRes, shapeRes) => set((s) => {
     const updatedNodes = s.project.nodes.map(node => {
         const shapeData = shapeRes.nodes[node.id];
@@ -668,6 +704,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     globalErrors: [],
     trainingResult: null,
     trainingDiagnostics: null,
+    isDatasetWizardOpen: false,
     isDirty: false,
     historyPast: [],
     historyFuture: [],

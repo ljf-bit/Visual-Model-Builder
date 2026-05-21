@@ -1167,6 +1167,380 @@ button {
   background: var(--color-accent);
 }
 
+.autofix-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid color-mix(in srgb, var(--color-accent), transparent 56%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-accent), transparent 92%);
+}
+
+.autofix-panel-empty {
+  border-style: dashed;
+}
+
+.autofix-panel-header,
+.autofix-card-main,
+.autofix-card-actions,
+.dataset-wizard-header,
+.dataset-wizard-footer,
+.experiment-compare-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.experiment-compare-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.experiment-compare-copy strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+}
+
+.experiment-compare-copy span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.autofix-panel-title,
+.autofix-card-title,
+.dataset-wizard h2,
+.experiment-selected-title {
+  color: var(--color-text-primary);
+  font-weight: 800;
+}
+
+.autofix-panel-title {
+  font-size: var(--font-size-sm);
+}
+
+.autofix-panel-subtitle,
+.autofix-card-description,
+.autofix-panel-more,
+.dataset-wizard p,
+.dataset-wizard-note,
+.dataset-wizard-empty,
+.experiment-selected-meta,
+.experiment-selected-metrics,
+.experiment-table span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.autofix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.autofix-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.autofix-card-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--color-accent-soft);
+}
+
+.autofix-card-actions button,
+.autofix-apply-all,
+.dataset-wizard button,
+.inspector-secondary-action {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-weight: 700;
+  background: var(--color-bg-tertiary);
+  cursor: pointer;
+}
+
+.autofix-card-actions button:hover,
+.autofix-apply-all:hover:not(:disabled),
+.dataset-wizard button:hover:not(:disabled),
+.inspector-secondary-action:hover {
+  border-color: var(--color-accent);
+  background: var(--color-bg-hover);
+}
+
+.autofix-apply-all,
+.dataset-wizard-apply,
+.dataset-wizard-inspect {
+  color: white !important;
+  border-color: transparent !important;
+  background: var(--color-accent) !important;
+}
+
+.autofix-apply-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.autofix-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+}
+
+.autofix-preview code {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+}
+
+.inspector-secondary-action {
+  width: 100%;
+  margin-bottom: var(--spacing-sm);
+}
+
+.dataset-wizard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.dataset-wizard {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 96vw);
+  max-height: min(760px, 92vh);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.dataset-wizard-header,
+.dataset-wizard-footer {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dataset-wizard-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 0;
+}
+
+.dataset-wizard-close {
+  width: 32px;
+  padding: 0;
+}
+
+.dataset-wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dataset-wizard-steps button.active {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent), transparent 45%);
+  background: var(--color-accent-soft);
+}
+
+.dataset-wizard-body {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--spacing-lg);
+}
+
+.dataset-wizard-grid,
+.dataset-wizard-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.dataset-wizard-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.dataset-wizard-grid input,
+.dataset-wizard-grid select {
+  min-height: 34px;
+  width: 100%;
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+
+.dataset-wizard-wide {
+  grid-column: 1 / -1;
+}
+
+.dataset-wizard-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+}
+
+.dataset-wizard-checkbox input {
+  width: 16px;
+}
+
+.dataset-wizard-preview,
+.experiment-compare,
+.experiment-selected-card,
+.experiment-compare-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.dataset-wizard-preview-grid > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.dataset-wizard-preview-grid strong {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.dataset-wizard-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+}
+
+.experiment-selected-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.experiment-selected-card {
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+
+.experiment-selected-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.experiment-mini-chart {
+  width: 100%;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+}
+
+.experiment-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.experiment-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.experiment-table th,
+.experiment-table td {
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.experiment-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+}
+
+.experiment-table td {
+  color: var(--color-text-primary);
+}
+
+.experiment-table td > span,
+.experiment-table td strong {
+  display: block;
+}
+
+.experiment-status {
+  display: inline-flex !important;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.experiment-status.ok {
+  color: #bbf7d0;
+  background: color-mix(in srgb, var(--color-success), transparent 72%);
+}
+
+.experiment-status.failed {
+  color: #fecaca;
+  background: color-mix(in srgb, var(--color-error), transparent 72%);
+}
+
+:root[data-theme="light"] .experiment-status.ok {
+  color: #166534;
+}
+
+:root[data-theme="light"] .experiment-status.failed {
+  color: #991b1b;
+}
+
 .app-global-errors {
   display: flex;
   flex-direction: column;
@@ -1299,5 +1673,30 @@ button {
 
   .training-panel-log-row {
     grid-template-columns: 1fr;
+  }
+
+  .dataset-wizard-backdrop {
+    align-items: stretch;
+    padding: var(--spacing-sm);
+  }
+
+  .dataset-wizard {
+    width: 100%;
+    max-height: none;
+  }
+
+  .dataset-wizard-steps,
+  .dataset-wizard-grid,
+  .dataset-wizard-preview-grid,
+  .experiment-selected-grid,
+  .experiment-selected-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-wizard-footer,
+  .autofix-panel-header,
+  .experiment-compare-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

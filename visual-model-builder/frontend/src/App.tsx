@@ -4,6 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 
 import { Canvas } from './features/canvas';
 import { CodePanel } from './features/codegen';
+import { DatasetWizard } from './features/datasetWizard';
 import { Inspector } from './features/inspector';
 import { Palette } from './features/palette';
 import { TrainingPanel } from './features/training';
@@ -61,6 +62,7 @@ const AppShell: React.FC = () => {
   const setProject = useAppStore((state) => state.setProject);
   const setRemoteFeedback = useAppStore((state) => state.setRemoteFeedback);
   const markSaved = useAppStore((state) => state.markSaved);
+  const openDatasetWizard = useAppStore((state) => state.openDatasetWizard);
   const { theme, toggleTheme } = useTheme();
   const { toggleLanguage, t } = useLanguage();
   const [paletteWidth, setPaletteWidth] = useState(240);
@@ -299,6 +301,9 @@ const AppShell: React.FC = () => {
             <button className="app-icon-btn" onClick={toggleTheme} title={t('app.themeToggle')} aria-label={t('app.themeToggle')}>
               {theme === 'dark' ? t('app.light') : t('app.dark')}
             </button>
+            <button className="app-btn" onClick={openDatasetWizard}>
+              {t('app.datasetWizard')}
+            </button>
             <button className="app-btn" onClick={handleLoad}>
               {t('app.open')}
             </button>
@@ -366,6 +371,7 @@ const AppShell: React.FC = () => {
           />
           <Inspector />
         </div>
+        <DatasetWizard />
       </div>
   );
 };

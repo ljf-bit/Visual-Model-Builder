@@ -1,5 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 
+import { AutoFixPanel, buildAutoFixSuggestions } from '../autofix';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getParamHelpText, getParamLabel, translateKnownMessage } from '../../i18n';
 import { getNodeBehavior } from '../../registry';
@@ -176,8 +177,12 @@ function renderParamControl(
 
 const Inspector: React.FC = () => {
   const selectedNodeId = useAppStore((state) => state.selectedNodeId);
+  const project = useAppStore((state) => state.project);
   const nodes = useAppStore((state) => state.project.nodes);
+  const trainingDiagnostics = useAppStore((state) => state.trainingDiagnostics);
   const updateNodeParams = useAppStore((state) => state.updateNodeParams);
+  const applyAutoFixActions = useAppStore((state) => state.applyAutoFixActions);
+  const openDatasetWizard = useAppStore((state) => state.openDatasetWizard);
   const [isInspecting, setIsInspecting] = useState(false);
   const [datasetPreview, setDatasetPreview] = useState<InspectDatasetResponse | null>(null);
   const { language, t } = useLanguage();
@@ -195,6 +200,10 @@ const Inspector: React.FC = () => {
   const visibleParams = useMemo(
     () => behavior?.template.params.filter((param) => !param.visible || param.visible(selectedParams)) ?? [],
     [behavior, selectedParams],
+  );
+  const autoFixSuggestions = useMemo(
+    () => buildAutoFixSuggestions(project, trainingDiagnostics, datasetPreview),
+    [datasetPreview, project, trainingDiagnostics],
   );
 
   useEffect(() => {
@@ -286,6 +295,9 @@ const Inspector: React.FC = () => {
               {isInspecting ? t('inspector.inspecting') : datasetPreview?.success ? t('inspector.ready') : t('inspector.pending')}
             </span>
           </div>
+          <button className="inspector-secondary-action" onClick={openDatasetWizard}>
+            {t('inspector.openWizard')}
+          </button>
           {datasetPreview ? (
             <>
               <div className="inspector-shapes">
@@ -347,6 +359,10 @@ const Inspector: React.FC = () => {
             {t('inspector.dataloaderWorkersNotice')}
           </InspectorNotice>
         </div>
+      ) : null}
+
+      {autoFixSuggestions.length > 0 ? (
+        <AutoFixPanel suggestions={autoFixSuggestions} onApply={applyAutoFixActions} compact />
       ) : null}
 
       <div className="inspector-params">

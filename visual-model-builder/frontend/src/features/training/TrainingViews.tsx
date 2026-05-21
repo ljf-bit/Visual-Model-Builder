@@ -1,4 +1,6 @@
 import type { RunTrainingResponse, TrainingDiagnosticsResponse, TrainingRunMetadata } from '../../types';
+import type { AutoFixAction, AutoFixSuggestion } from '../../types';
+import { AutoFixPanel } from '../autofix';
 import { useLanguage } from '../../hooks/useLanguage';
 import { translateKnownMessage } from '../../i18n';
 import { buildPolyline, formatDuration } from './trainingCharts';
@@ -10,6 +12,8 @@ type StatusViewProps = {
   trainingResult: RunTrainingResponse | null;
   trainingMetadata: TrainingRunMetadata | null;
   trainingEvidence: string;
+  autoFixSuggestions: AutoFixSuggestion[];
+  onApplyAutoFix: (actions: AutoFixAction[]) => void;
 };
 
 type CurvesViewProps = {
@@ -90,6 +94,8 @@ export function TrainingStatusView({
   trainingResult,
   trainingMetadata,
   trainingEvidence,
+  autoFixSuggestions,
+  onApplyAutoFix,
 }: StatusViewProps) {
   const { language, t } = useLanguage();
   const diagnosticsErrors = currentDiagnostics?.errors ?? [];
@@ -106,6 +112,8 @@ export function TrainingStatusView({
           </div>
         ))}
       </div>
+
+      <AutoFixPanel suggestions={autoFixSuggestions} onApply={onApplyAutoFix} />
 
       {currentDiagnostics ? (
         <div className="training-panel-summary-grid">

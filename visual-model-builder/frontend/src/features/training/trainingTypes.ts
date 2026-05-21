@@ -1,4 +1,4 @@
-export type TrainingView = 'curves' | 'status' | 'logs' | 'analysis';
+export type TrainingView = 'curves' | 'status' | 'logs' | 'analysis' | 'compare';
 
 export type ChartPoint = {
   x: number;
