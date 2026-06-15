@@ -21,6 +21,7 @@ lerna-debug.log*
 # Environment and local overrides
 .env
 .env.*
+!.env.example
 *.local
 
 # Python caches and tooling
@@ -43,6 +44,7 @@ visual-model-builder/frontend/.vite/
 visual-model-builder/frontend/.vite-temp/
 
 # Backend training artifacts
+visual-model-builder/backend/data/
 visual-model-builder/backend/training_runs/
 visual-model-builder/backend/.test_training_runs/
 *.pt

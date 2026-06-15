@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: visual-model-builder-api
+    runtime: docker
+    rootDir: visual-model-builder/backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: VMB_CORS_ORIGINS
+        sync: false
+      - key: VMB_TRAINING_RUNS_DIR
+        value: /app/training_runs

@@ -40,3 +40,5 @@ Open the app:
 
 More project details are available in
 [visual-model-builder/README.md](visual-model-builder/README.md).
+
+Deployment instructions are available in [DEPLOYMENT.md](DEPLOYMENT.md).
