@@ -1,68 +1,75 @@
-# Deployment
+# 部署说明
 
-This project has a static Vite frontend and a FastAPI backend. To make it
-available through a public link, deploy both parts and connect the frontend to
-the backend URL.
+本项目由两个部分组成：
 
-## Backend
+- 前端：Vite 静态站点，目录为 `visual-model-builder/frontend`
+- 后端：FastAPI 服务，目录为 `visual-model-builder/backend`
 
-Deploy `visual-model-builder/backend` as a Docker web service.
+如果想通过公网链接访问项目，需要分别部署前端和后端，并让前端指向后端的公网 API 地址。
 
-The backend Dockerfile is included at:
+## 后端部署
+
+后端建议以 Docker Web Service 的方式部署。项目已提供后端镜像配置：
 
 ```text
 visual-model-builder/backend/Dockerfile
 ```
 
-For Render Blueprint-style deployment, `render.yaml` is included at the
-repository root. After the backend service is created, set:
+如果使用 Render Blueprint 部署，仓库根目录已经提供：
+
+```text
+render.yaml
+```
+
+后端部署完成后，需要设置允许访问后端的前端域名：
 
 ```text
 VMB_CORS_ORIGINS=https://your-frontend-domain.example.com
 ```
 
-For temporary preview deployments, you can also use:
+如果需要临时支持预览域名，也可以设置：
 
 ```text
 VMB_CORS_ORIGIN_REGEX=https://.*\.vercel\.app
 ```
 
-Use the backend service URL plus `/health` to verify that the API is running.
-Use `/docs` on the backend service URL to view the FastAPI documentation.
+部署完成后，可以用后端服务地址加 `/health` 检查 API 是否运行正常；用后端服务地址加 `/docs` 查看 FastAPI 接口文档。
 
-## Frontend
+## 前端部署
 
-Deploy `visual-model-builder/frontend` as a Vite static site.
+前端建议部署为 Vite 静态站点。部署目录为：
 
-Set this frontend environment variable before building:
+```text
+visual-model-builder/frontend
+```
+
+构建前需要设置后端 API 地址：
 
 ```text
 VITE_API_BASE_URL=https://your-backend-service.example.com
 ```
 
-Build command:
+构建命令：
 
 ```text
 npm run build
 ```
 
-Output directory:
+构建输出目录：
 
 ```text
 dist
 ```
 
-## Recommended Order
+## 推荐部署顺序
 
-1. Deploy the backend and confirm `/health` works.
-2. Deploy the frontend with `VITE_API_BASE_URL` pointing to the backend URL.
-3. Add the final frontend domain to backend `VMB_CORS_ORIGINS`.
-4. Redeploy the backend after changing CORS settings.
+1. 先部署后端，并确认 `/health` 可以正常访问。
+2. 部署前端，并把 `VITE_API_BASE_URL` 设置为后端公网地址。
+3. 将最终前端域名填入后端的 `VMB_CORS_ORIGINS`。
+4. 修改 CORS 配置后，重新部署后端。
 
-## Notes
+## 注意事项
 
-- Do not commit local datasets, model weights, or generated training runs.
-- MNIST is downloaded on first use if it is not already present in the backend
-  runtime.
-- Long CPU training jobs may need a larger backend instance than a small free
-  service tier.
+- 不要提交本地数据集、模型权重或训练运行产物。
+- MNIST 数据集会在后端首次使用时自动下载。
+- 如果需要长时间 CPU 训练，建议选择资源更充足的后端实例。
