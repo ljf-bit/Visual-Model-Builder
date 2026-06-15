@@ -21,7 +21,7 @@ Start the backend:
 
 ```powershell
 cd "visual-model-builder/backend"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app
 ```
 
 Start the frontend:
@@ -29,14 +29,14 @@ Start the frontend:
 ```powershell
 cd "visual-model-builder/frontend"
 npm install
-npm run dev -- --host 127.0.0.1 --port 5173
+npm run dev
 ```
 
 Open the app:
 
-- Frontend: http://127.0.0.1:5173
-- API docs: http://127.0.0.1:8000/docs
-- Health check: http://127.0.0.1:8000/health
+- Frontend: use the local URL printed by the Vite dev server.
+- API docs: open `/docs` on the backend server URL.
+- Health check: open `/health` on the backend server URL.
 
 More project details are available in
 [visual-model-builder/README.md](visual-model-builder/README.md).

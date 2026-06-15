@@ -84,7 +84,7 @@ Start backend:
 
 ```bash
 cd backend
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload
 ```
 
 Start frontend:
@@ -97,9 +97,9 @@ npm run dev
 
 Open:
 
-- Frontend: http://127.0.0.1:5173
-- API docs: http://127.0.0.1:8000/docs
-- Health: http://127.0.0.1:8000/health
+- Frontend: use the local URL printed by the Vite dev server.
+- API docs: open `/docs` on the backend server URL.
+- Health: open `/health` on the backend server URL.
 
 ## API
 
