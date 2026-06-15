@@ -572,6 +572,8 @@ def _persist_training_artifacts(
 # ---------------------------------------------------------------------------
 
 from app.services.dataset_inspection import (
+    BUILTIN_RUNTIME_SAMPLE_COUNT,
+    BUILTIN_RUNTIME_SPLITS,
     build_dataset_input_shape,
     compute_ratio_split_counts,
     inspect_dataset_config,
@@ -731,14 +733,14 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
     dataset_name = str(normalized["datasetName"])
     train_transform = _build_transform_pipeline(normalized, transforms, is_training=True)
     eval_transform = _build_transform_pipeline(normalized, transforms, is_training=False)
-    split_counts = {"train": 205, "val": 51, "test": 0}
+    split_counts = dict(BUILTIN_RUNTIME_SPLITS)
 
     if dataset_name == "MNIST":
         try:
             train_source = datasets.MNIST(
                 root="./data",
                 train=train_split,
-                download=False,
+                download=True,
                 transform=train_transform,
             )
             eval_source = datasets.MNIST(
@@ -766,22 +768,25 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
                 train_split=train_split,
                 warnings=warnings,
             )
-        except Exception:
-            warnings.append("MNIST was unavailable locally, so training used FakeData instead.")
+        except Exception as exc:
+            raise RuntimeError(
+                "MNIST could not be loaded or downloaded, so training was stopped instead of silently using FakeData. "
+                "Check network access for the first MNIST download, or switch the Dataset node to FakeData explicitly."
+            ) from exc
 
     train_source = datasets.FakeData(
-        size=256,
+        size=BUILTIN_RUNTIME_SAMPLE_COUNT,
         image_size=(int(input_shape[0]), int(input_shape[1]), int(input_shape[2])),
         num_classes=max(int(normalized["numClasses"]), 1),
         transform=train_transform,
     )
     eval_source = datasets.FakeData(
-        size=256,
+        size=BUILTIN_RUNTIME_SAMPLE_COUNT,
         image_size=(int(input_shape[0]), int(input_shape[1]), int(input_shape[2])),
         num_classes=max(int(normalized["numClasses"]), 1),
         transform=eval_transform,
     )
-    train_indices, val_indices, test_indices = _split_indices(256, split_counts, seed)
+    train_indices, val_indices, test_indices = _split_indices(BUILTIN_RUNTIME_SAMPLE_COUNT, split_counts, seed)
     class_names = [str(index) for index in range(max(int(normalized["numClasses"]), 1))]
     return RuntimeDatasetBundle(
         dataset=Subset(train_source, train_indices),
@@ -793,7 +798,7 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
         image_size=int(normalized["imageSize"]),
         num_classes=max(int(normalized["numClasses"]), 1),
         class_names=class_names,
-        sample_count=256,
+        sample_count=BUILTIN_RUNTIME_SAMPLE_COUNT,
         splits=split_counts,
         input_shape=input_shape,
         task_type=str(normalized["taskType"]),

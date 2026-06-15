@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services import training as training_service
 from app.services.training import compute_classification_metrics
 
 client = TestClient(app)
@@ -265,6 +266,29 @@ def test_generate_model_code_shifts_flatten_start_dim_for_batched_runtime():
     assert "nn.Flatten(start_dim=2, end_dim=-1)" in data["code"]
 
 
+def test_inspect_builtin_mnist_reports_runtime_validation_split():
+    response = client.post(
+        "/inspect-dataset",
+        json={
+            "config": {
+                "datasetMode": "builtin",
+                "datasetName": "MNIST",
+                "imageSize": 28,
+                "colorMode": "grayscale",
+                "numClasses": 10,
+                "taskType": "classification",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["sampleCount"] == 256
+    assert data["splits"] == {"train": 205, "val": 51, "test": 0}
+    assert data["numClasses"] == 10
+
+
 def test_run_training_returns_epoch_metrics(monkeypatch):
     runs_dir = Path(__file__).resolve().parents[2] / ".test_training_runs" / "epoch_metrics"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +323,40 @@ def test_run_training_returns_epoch_metrics(monkeypatch):
     assert summary_payload["normalizedConfig"]["trainer"]["seed"] == 42
     assert summary_payload["projectSnapshot"]["metadata"]["name"] == "Phase 2 Training Example"
     assert summary_payload["runtimeEnvironment"]["pythonVersion"]
+
+
+def test_run_training_stops_when_mnist_is_unavailable_instead_of_using_fakedata(monkeypatch):
+    original_loader = training_service._load_torch_runtime
+    download_flags: list[bool | None] = []
+
+    def fake_loader():
+        torch, nn, DataLoader, Subset, datasets, transforms = original_loader()
+
+        class DatasetProxy:
+            FakeData = datasets.FakeData
+            ImageFolder = datasets.ImageFolder
+
+            def MNIST(self, *args, **kwargs):
+                download_flags.append(kwargs.get("download"))
+                raise RuntimeError("simulated missing MNIST")
+
+        return torch, nn, DataLoader, Subset, DatasetProxy(), transforms
+
+    monkeypatch.setattr(training_service, "_load_torch_runtime", fake_loader)
+    payload = build_phase2_payload()
+    payload["project"]["nodes"][0]["data"]["params"]["datasetName"] = "MNIST"
+
+    response = client.post("/run-training", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is False
+    assert data["status"] == "runtime_unavailable"
+    assert data["logs"] == []
+    assert data["trainingMetadata"] is None
+    assert download_flags == [True]
+    assert any("MNIST could not be loaded" in message for message in data["errors"])
+    assert any("FakeData" in message for message in data["errors"])
 
 
 def test_run_training_accepts_sample_relative_flatten_dimensions(monkeypatch):

@@ -11,6 +11,8 @@ from typing import Any, Iterable, Mapping
 
 IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
 KNOWN_SPLIT_NAMES = ("train", "val", "test")
+BUILTIN_RUNTIME_SAMPLE_COUNT = 256
+BUILTIN_RUNTIME_SPLITS = {"train": 205, "val": 51, "test": 0}
 
 
 @dataclass(slots=True)
@@ -325,10 +327,10 @@ def _inspect_builtin_dataset(normalized: Mapping[str, Any]) -> DatasetInspection
         dataset_mode="builtin",
         resolved_split_mode="predefined",
         task_type=str(normalized["taskType"]),
-        sample_count=256 if not errors else 0,
+        sample_count=BUILTIN_RUNTIME_SAMPLE_COUNT if not errors else 0,
         num_classes=max(num_classes, 0),
         class_names=class_names,
-        splits={"train": 256 if not errors else 0, "val": 0, "test": 0},
+        splits=dict(BUILTIN_RUNTIME_SPLITS) if not errors else {"train": 0, "val": 0, "test": 0},
         input_shape=input_shape,
         warnings=warnings,
         errors=errors,
