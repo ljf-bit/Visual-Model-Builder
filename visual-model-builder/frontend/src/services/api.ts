@@ -11,6 +11,8 @@ import type {
   InspectDatasetResponse,
   ProjectGraph,
   TrainingDiagnosticsResponse,
+  TrainingRunDetailResponse,
+  TrainingRunListResponse,
   RunTrainingResponse,
   TrainingJobResponse,
   ValidateGraphResponse,
@@ -90,6 +92,16 @@ export async function getTrainingJob(jobId: string): Promise<TrainingJobResponse
 /** Request best-effort cancellation for an asynchronous training job */
 export async function cancelTrainingJob(jobId: string): Promise<TrainingJobResponse> {
   return post(`/training-jobs/${jobId}/cancel`, {});
+}
+
+/** List persisted backend training runs */
+export async function getTrainingRuns(limit = 50): Promise<TrainingRunListResponse> {
+  return get(`/training-runs?limit=${encodeURIComponent(String(limit))}`);
+}
+
+/** Load one persisted backend training run summary */
+export async function getTrainingRun(runId: string): Promise<TrainingRunDetailResponse> {
+  return get(`/training-runs/${encodeURIComponent(runId)}`);
 }
 
 /** Diagnose a training graph before running it */

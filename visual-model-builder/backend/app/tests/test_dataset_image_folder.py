@@ -191,6 +191,10 @@ def test_run_training_supports_image_folder(monkeypatch, tmp_path):
     assert data["trainingMetadata"]["datasetMode"] == "image_folder"
     assert data["trainingMetadata"]["sampleCount"] == 8
     assert data["trainingMetadata"]["splits"]["train"] == 4
+    assert data["trainingMetadata"]["splits"]["val"] == 2
+    assert data["evaluation"]["primarySplit"] == "validation"
+    assert data["evaluation"]["sampleCount"] == 2
+    assert len(data["evaluation"]["confusionMatrix"]) == 2
     assert data["trainingMetadata"]["numClasses"] == 2
     assert data["trainingMetadata"]["classNames"] == ["class_a", "class_b"]
     assert Path(data["trainingMetadata"]["weightsPath"]).exists()

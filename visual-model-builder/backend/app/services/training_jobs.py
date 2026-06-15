@@ -39,6 +39,7 @@ class TrainingJobRecord:
     logs: list[dict[str, float | int | None]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     insights: dict[str, object] | None = None
+    evaluation: dict[str, object] | None = None
     training_metadata: dict[str, object] | None = None
     cancel_requested: bool = False
     future: Future | None = field(default=None, repr=False)
@@ -55,6 +56,7 @@ class TrainingJobRecord:
             errors=self.errors,
             diagnostics=self.diagnostics,
             insights=self.insights,
+            evaluation=self.evaluation,
             trainingMetadata=self.training_metadata,
             createdAt=self.created_at,
             updatedAt=self.updated_at,
@@ -151,10 +153,11 @@ class TrainingJobStore:
                 current.updated_at = _utc_now()
 
         try:
-            status, logs, warnings, training_metadata, insights = run_training(
+            status, logs, warnings, training_metadata, insights, evaluation = run_training(
                 ir_graph,
                 project_name=record.project.metadata.name,
                 diagnostics_payload=record.diagnostics,
+                project_snapshot=record.project.model_dump(by_alias=True),
                 progress_callback=on_progress,
                 should_cancel=should_cancel,
             )
@@ -173,6 +176,7 @@ class TrainingJobStore:
             current.errors = warnings
             current.training_metadata = training_metadata
             current.insights = insights
+            current.evaluation = evaluation
             current.updated_at = _utc_now()
 
     def _fail_job(self, job_id: str, status: str, errors: list[str], insight_status: str) -> None:

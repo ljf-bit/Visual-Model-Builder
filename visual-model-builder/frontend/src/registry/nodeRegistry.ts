@@ -498,7 +498,15 @@ const MetricNode: NodeBehavior = {
     inputPorts: 0,
     outputPorts: 1,
     params: [
-      { key: 'metricType', label: 'Metric', type: 'select', required: true, defaultValue: 'Accuracy', options: ['Accuracy'], helpText: 'Metric shown in the training panel.' },
+      {
+        key: 'metricType',
+        label: 'Metric',
+        type: 'select',
+        required: true,
+        defaultValue: 'Accuracy',
+        options: ['Accuracy', 'Precision', 'Recall', 'F1', 'AllClassificationMetrics'],
+        helpText: 'Metric shown in the training panel and persisted evaluation report.',
+      },
     ],
   },
   defaultData: () => ({

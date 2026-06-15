@@ -10,6 +10,8 @@ from app.schemas.responses import (
     RunTrainingResponse,
     TrainingDiagnosticsResponse,
     TrainingJobResponse,
+    TrainingRunDetailResponse,
+    TrainingRunListResponse,
     ValidateGraphResponse,
 )
 from app.services.codegen import generate_code as do_generate_code, generate_model_code as do_generate_model_code
@@ -22,6 +24,7 @@ from app.services.graph_ir import project_to_ir
 from app.services.shape_infer import infer_graph_shapes
 from app.services.training import run_training as do_run_training
 from app.services.training_jobs import training_job_store
+from app.services.training_runs import get_training_run_summary, list_training_run_records
 from app.services.validator import validate_graph as do_validate_graph
 
 router = APIRouter()
@@ -145,10 +148,11 @@ async def run_training(request: ProjectRequest):
         )
 
     try:
-        status, logs, warnings, training_metadata, insights = do_run_training(
+        status, logs, warnings, training_metadata, insights, evaluation = do_run_training(
             ir_graph,
             project_name=request.project.metadata.name,
             diagnostics_payload=diagnostics,
+            project_snapshot=request.project.model_dump(by_alias=True),
         )
     except RuntimeError as exc:
         return RunTrainingResponse(
@@ -190,6 +194,7 @@ async def run_training(request: ProjectRequest):
         errors=warnings,
         diagnostics=diagnostics,
         insights=insights,
+        evaluation=evaluation,
         training_metadata=training_metadata,
     )
 
@@ -219,3 +224,20 @@ async def cancel_training_job(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Training job not found.")
     return job
+
+
+@router.get("/training-runs", response_model=TrainingRunListResponse)
+async def list_training_runs(limit: int = 50):
+    """List persisted training runs from the artifact directory."""
+
+    return TrainingRunListResponse(runs=list_training_run_records(limit=limit))
+
+
+@router.get("/training-runs/{run_id}", response_model=TrainingRunDetailResponse)
+async def get_training_run(run_id: str):
+    """Return a persisted training run summary."""
+
+    summary = get_training_run_summary(run_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Training run not found.")
+    return TrainingRunDetailResponse(runId=run_id, summary=summary)

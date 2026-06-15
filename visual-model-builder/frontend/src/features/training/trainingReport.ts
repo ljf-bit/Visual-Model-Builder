@@ -1,6 +1,7 @@
 import type {
   RunTrainingResponse,
   TrainingDiagnosticsResponse,
+  TrainingEvaluationSummary,
   TrainingInsightsResponse,
   TrainingRunMetadata,
 } from '../../types';
@@ -58,6 +59,7 @@ export function buildTrainingReportHtml(
   projectName: string,
   result: RunTrainingResponse,
   trainingMetadata: TrainingRunMetadata,
+  evaluation: TrainingEvaluationSummary | null,
   lossPoints: ChartPoint[],
   accuracyPoints: ChartPoint[],
   diagnostics: TrainingDiagnosticsResponse | null,
@@ -70,10 +72,28 @@ export function buildTrainingReportHtml(
           <td>${log.epoch}</td>
           <td>${log.loss.toFixed(4)}</td>
           <td>${log.accuracy !== null ? `${(log.accuracy * 100).toFixed(2)}%` : '--'}</td>
+          <td>${log.valLoss !== undefined && log.valLoss !== null ? log.valLoss.toFixed(4) : '--'}</td>
+          <td>${log.valAccuracy !== undefined && log.valAccuracy !== null ? `${(log.valAccuracy * 100).toFixed(2)}%` : '--'}</td>
         </tr>
       `,
     )
     .join('');
+  const confusionRows = evaluation?.confusionMatrix
+    .map((row) => `<tr>${row.map((value) => `<td>${value}</td>`).join('')}</tr>`)
+    .join('') ?? '';
+  const classMetricRows = evaluation?.classMetrics
+    .map(
+      (metric) => `
+        <tr>
+          <td>${escapeHtml(metric.className)}</td>
+          <td>${metric.support}</td>
+          <td>${(metric.precision * 100).toFixed(2)}%</td>
+          <td>${(metric.recall * 100).toFixed(2)}%</td>
+          <td>${(metric.f1 * 100).toFixed(2)}%</td>
+        </tr>
+      `,
+    )
+    .join('') ?? '';
 
   return `
 <!DOCTYPE html>
@@ -115,8 +135,23 @@ export function buildTrainingReportHtml(
       <div class="card"><div class="label">Learning Rate</div><div class="value">${trainingMetadata.learningRate}</div></div>
       <div class="card"><div class="label">Model Weights</div><div class="value"><code>${escapeHtml(trainingMetadata.weightsPath)}</code></div></div>
       <div class="card"><div class="label">Summary JSON</div><div class="value"><code>${escapeHtml(trainingMetadata.summaryPath)}</code></div></div>
+      <div class="card"><div class="label">Run ID</div><div class="value"><code>${escapeHtml(trainingMetadata.runId || '')}</code></div></div>
+      <div class="card"><div class="label">Seed</div><div class="value">${evaluation?.seed ?? '--'}</div></div>
     </div>
   </section>
+
+  ${evaluation ? `<section><h2>Evaluation</h2><div class="meta-grid">
+    <div class="card"><div class="label">Primary Split</div><div class="value">${escapeHtml(evaluation.primarySplit)}</div></div>
+    <div class="card"><div class="label">Macro F1</div><div class="value">${evaluation.macroF1 !== null ? evaluation.macroF1.toFixed(4) : '--'}</div></div>
+    <div class="card"><div class="label">Weighted F1</div><div class="value">${evaluation.weightedF1 !== null ? evaluation.weightedF1.toFixed(4) : '--'}</div></div>
+    <div class="card"><div class="label">Config Hash</div><div class="value"><code>${escapeHtml(evaluation.configHash)}</code></div></div>
+  </div></section>` : ''}
+
+  ${evaluation && confusionRows ? `<section><h2>Confusion Matrix</h2><table><tbody>${confusionRows}</tbody></table></section>` : ''}
+  ${evaluation && classMetricRows ? `<section><h2>Per-Class Metrics</h2><table>
+    <thead><tr><th>Class</th><th>Support</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+    <tbody>${classMetricRows}</tbody>
+  </table></section>` : ''}
 
   ${diagnostics ? `<section><h2>Training Diagnostics</h2><div class="card">${escapeHtml(diagnostics.summary)}</div></section>` : ''}
   ${insights ? `<section><h2>Training Analysis</h2><div class="meta-grid">
@@ -138,7 +173,7 @@ export function buildTrainingReportHtml(
   <section>
     <h2>Logs</h2>
     <table>
-      <thead><tr><th>Epoch</th><th>Loss</th><th>Accuracy</th></tr></thead>
+      <thead><tr><th>Epoch</th><th>Loss</th><th>Accuracy</th><th>Val Loss</th><th>Val Accuracy</th></tr></thead>
       <tbody>${logsRows}</tbody>
     </table>
   </section>

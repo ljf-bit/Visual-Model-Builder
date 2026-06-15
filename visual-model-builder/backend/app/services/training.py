@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import platform
 import re
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -131,6 +134,11 @@ def _get_training_runs_root() -> Path:
     if configured_root:
         return Path(configured_root).resolve()
     return (Path(__file__).resolve().parents[2] / "training_runs").resolve()
+
+
+def _stable_hash(payload: object) -> str:
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:12]
 
 
 def _load_torch_runtime():
@@ -276,6 +284,228 @@ def _normalize_classification_outputs(outputs):
     return outputs
 
 
+def compute_classification_metrics(
+    predictions: list[int],
+    labels: list[int],
+    num_classes: int,
+    class_names: list[str] | None = None,
+) -> dict[str, object]:
+    """Compute classification metrics without pulling in sklearn."""
+
+    resolved_classes = max(int(num_classes), 1)
+    confusion_matrix = [[0 for _ in range(resolved_classes)] for _ in range(resolved_classes)]
+    for target, predicted in zip(labels, predictions):
+        if 0 <= int(target) < resolved_classes and 0 <= int(predicted) < resolved_classes:
+            confusion_matrix[int(target)][int(predicted)] += 1
+
+    total = sum(sum(row) for row in confusion_matrix)
+    correct = sum(confusion_matrix[index][index] for index in range(resolved_classes))
+    accuracy = correct / total if total else None
+
+    class_metrics: list[dict[str, object]] = []
+    precision_sum = 0.0
+    recall_sum = 0.0
+    f1_sum = 0.0
+    weighted_f1_sum = 0.0
+    support_sum = 0
+
+    for class_index in range(resolved_classes):
+        true_positive = confusion_matrix[class_index][class_index]
+        false_positive = sum(confusion_matrix[row][class_index] for row in range(resolved_classes) if row != class_index)
+        false_negative = sum(confusion_matrix[class_index][col] for col in range(resolved_classes) if col != class_index)
+        support = sum(confusion_matrix[class_index])
+
+        precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
+        recall = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+
+        precision_sum += precision
+        recall_sum += recall
+        f1_sum += f1
+        weighted_f1_sum += f1 * support
+        support_sum += support
+
+        class_metrics.append(
+            {
+                "classIndex": class_index,
+                "className": (class_names or [])[class_index] if class_names and class_index < len(class_names) else str(class_index),
+                "support": support,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            }
+        )
+
+    macro_precision = precision_sum / resolved_classes
+    macro_recall = recall_sum / resolved_classes
+    macro_f1 = f1_sum / resolved_classes
+    weighted_f1 = weighted_f1_sum / support_sum if support_sum else 0.0
+
+    return {
+        "loss": None,
+        "accuracy": accuracy,
+        "precision": macro_precision,
+        "recall": macro_recall,
+        "f1": macro_f1,
+        "macroPrecision": macro_precision,
+        "macroRecall": macro_recall,
+        "macroF1": macro_f1,
+        "weightedF1": weighted_f1,
+        "confusionMatrix": confusion_matrix,
+        "classMetrics": class_metrics,
+        "sampleCount": total,
+    }
+
+
+def _empty_metric_summary() -> dict[str, float | None]:
+    return {"loss": None, "accuracy": None, "precision": None, "recall": None, "f1": None}
+
+
+def _log_to_metric_summary(log: Mapping[str, Any], prefix: str = "") -> dict[str, float | None]:
+    def read(key: str) -> float | None:
+        value = log.get(f"{prefix}{key}" if prefix else key)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    return {
+        "loss": read("loss" if not prefix else "Loss"),
+        "accuracy": read("accuracy" if not prefix else "Accuracy"),
+        "precision": read("precision" if not prefix else "Precision"),
+        "recall": read("recall" if not prefix else "Recall"),
+        "f1": read("f1" if not prefix else "F1"),
+    }
+
+
+def _runtime_environment(torch) -> dict[str, object]:
+    return {
+        "pythonVersion": sys.version.split()[0],
+        "platform": platform.platform(),
+        "torchVersion": getattr(torch, "__version__", "unknown"),
+        "cudaAvailable": bool(torch.cuda.is_available()),
+    }
+
+
+def _compute_batch_loss_and_outputs(torch, nn, model, criterion, inputs, labels, num_classes: int):
+    outputs = model(inputs)
+    if isinstance(criterion, nn.MSELoss):
+        targets = torch.nn.functional.one_hot(labels, num_classes=num_classes).float()
+        loss = criterion(outputs, targets)
+        normalized_outputs = _normalize_classification_outputs(outputs)
+    else:
+        normalized_outputs = _normalize_classification_outputs(outputs)
+        loss = criterion(normalized_outputs, labels)
+    return loss, normalized_outputs
+
+
+def _summarize_epoch_metrics(
+    running_loss: float,
+    batch_count: int,
+    predictions: list[int],
+    labels: list[int],
+    num_classes: int,
+    class_names: list[str],
+    include_metrics: bool,
+) -> dict[str, object]:
+    metrics = compute_classification_metrics(predictions, labels, num_classes, class_names)
+    metrics["loss"] = running_loss / max(batch_count, 1)
+
+    if not include_metrics:
+        metrics["accuracy"] = None
+        metrics["precision"] = None
+        metrics["recall"] = None
+        metrics["f1"] = None
+
+    return metrics
+
+
+def train_one_epoch(
+    torch,
+    nn,
+    model,
+    dataloader,
+    criterion,
+    optimizer,
+    device,
+    num_classes: int,
+    class_names: list[str],
+    include_metrics: bool,
+    should_cancel: Callable[[], bool],
+) -> tuple[dict[str, object], bool]:
+    """Run one training epoch and return aggregate metrics."""
+
+    model.train()
+    running_loss = 0.0
+    batch_count = 0
+    predictions: list[int] = []
+    labels_seen: list[int] = []
+
+    for inputs, labels in dataloader:
+        if should_cancel():
+            return {}, True
+
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+        loss, outputs = _compute_batch_loss_and_outputs(torch, nn, model, criterion, inputs, labels, num_classes)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += float(loss.item())
+        batch_count += 1
+        predictions.extend(int(value) for value in outputs.argmax(dim=1).detach().cpu().tolist())
+        labels_seen.extend(int(value) for value in labels.detach().cpu().tolist())
+
+    return _summarize_epoch_metrics(
+        running_loss,
+        batch_count,
+        predictions,
+        labels_seen,
+        num_classes,
+        class_names,
+        include_metrics,
+    ), False
+
+
+def evaluate(
+    torch,
+    nn,
+    model,
+    dataloader,
+    criterion,
+    device,
+    num_classes: int,
+    class_names: list[str],
+    include_metrics: bool = True,
+) -> dict[str, object]:
+    """Evaluate a model on one split and return loss plus classification metrics."""
+
+    model.eval()
+    running_loss = 0.0
+    batch_count = 0
+    predictions: list[int] = []
+    labels_seen: list[int] = []
+
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            loss, outputs = _compute_batch_loss_and_outputs(torch, nn, model, criterion, inputs, labels, num_classes)
+            running_loss += float(loss.item())
+            batch_count += 1
+            predictions.extend(int(value) for value in outputs.argmax(dim=1).detach().cpu().tolist())
+            labels_seen.extend(int(value) for value in labels.detach().cpu().tolist())
+
+    return _summarize_epoch_metrics(
+        running_loss,
+        batch_count,
+        predictions,
+        labels_seen,
+        num_classes,
+        class_names,
+        include_metrics,
+    )
+
+
 def _persist_training_artifacts(
     model,
     logs: list[dict[str, float | int | None]],
@@ -283,6 +513,10 @@ def _persist_training_artifacts(
     warnings: list[str],
     diagnostics: dict[str, object] | None = None,
     insights: dict[str, object] | None = None,
+    evaluation: dict[str, object] | None = None,
+    project_snapshot: dict[str, object] | None = None,
+    normalized_config: dict[str, object] | None = None,
+    runtime_environment: dict[str, object] | None = None,
 ) -> TrainingRunMetadataPayload:
     """Persist weights and JSON summaries for a completed run."""
 
@@ -294,6 +528,7 @@ def _persist_training_artifacts(
     weights_path = run_directory / "model_weights.pt"
     logs_path = run_directory / "training_logs.json"
     summary_path = run_directory / "training_summary.json"
+    metadata.run_id = run_id
 
     torch, _, _, _, _, _ = _load_torch_runtime()
     torch.save(model.state_dict(), weights_path)
@@ -307,6 +542,10 @@ def _persist_training_artifacts(
                 "logs": logs,
                 "diagnostics": diagnostics,
                 "insights": insights,
+                "evaluation": evaluation,
+                "projectSnapshot": project_snapshot,
+                "normalizedConfig": normalized_config,
+                "runtimeEnvironment": runtime_environment,
                 "trainingMetadata": {
                     **asdict(metadata),
                     "run_directory": str(run_directory.resolve()),
@@ -346,6 +585,8 @@ class RuntimeDatasetBundle:
     """Resolved runtime dataset plus dataset-summary metadata for reporting."""
 
     dataset: Any
+    val_dataset: Any | None
+    test_dataset: Any | None
     requested_name: str
     used_name: str
     dataset_mode: str
@@ -364,6 +605,7 @@ class RuntimeDatasetBundle:
 class TrainingRunMetadataPayload:
     """Serializable summary of a completed training run."""
 
+    run_id: str
     project_name: str
     requested_dataset_name: str
     dataset_used: str
@@ -467,33 +709,58 @@ def _build_transform_pipeline(dataset_params: Mapping[str, Any], transforms, is_
     return transforms.Compose(transform_steps)
 
 
-def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, Any], inspection) -> RuntimeDatasetBundle:
+def _split_indices(total_count: int, split_counts: Mapping[str, int], seed: int) -> tuple[list[int], list[int], list[int]]:
+    indices = list(range(total_count))
+    import random
+
+    random.Random(seed).shuffle(indices)
+    train_count = max(int(split_counts.get("train", total_count)), 0)
+    val_count = max(int(split_counts.get("val", 0)), 0)
+    test_count = max(int(split_counts.get("test", 0)), 0)
+    train_indices = indices[:train_count]
+    val_indices = indices[train_count : train_count + val_count]
+    test_indices = indices[train_count + val_count : train_count + val_count + test_count]
+    return train_indices, val_indices, test_indices
+
+
+def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, Any], inspection, seed: int) -> RuntimeDatasetBundle:
     _, _, _, Subset, datasets, transforms = _load_torch_runtime()
     warnings = list(inspection.warnings)
     input_shape = build_dataset_input_shape(normalized) or get_input_shape(ir_graph)
     train_split = _parse_bool(normalized.get("trainSplit", True), True)
     dataset_name = str(normalized["datasetName"])
-    transform = _build_transform_pipeline(normalized, transforms, is_training=True)
+    train_transform = _build_transform_pipeline(normalized, transforms, is_training=True)
+    eval_transform = _build_transform_pipeline(normalized, transforms, is_training=False)
+    split_counts = {"train": 205, "val": 51, "test": 0}
 
     if dataset_name == "MNIST":
         try:
-            dataset = datasets.MNIST(
+            train_source = datasets.MNIST(
                 root="./data",
                 train=train_split,
                 download=False,
-                transform=transform,
+                transform=train_transform,
             )
-            dataset = Subset(dataset, range(min(len(dataset), 256)))
+            eval_source = datasets.MNIST(
+                root="./data",
+                train=train_split,
+                download=False,
+                transform=eval_transform,
+            )
+            capped_size = min(len(train_source), 256)
+            train_indices, val_indices, test_indices = _split_indices(capped_size, split_counts, seed)
             return RuntimeDatasetBundle(
-                dataset=dataset,
+                dataset=Subset(train_source, train_indices),
+                val_dataset=Subset(eval_source, val_indices) if val_indices else None,
+                test_dataset=Subset(eval_source, test_indices) if test_indices else None,
                 requested_name="MNIST",
                 used_name="MNIST",
                 dataset_mode="builtin",
                 image_size=int(normalized["imageSize"]),
                 num_classes=10,
                 class_names=[str(index) for index in range(10)],
-                sample_count=256,
-                splits={"train": 256, "val": 0, "test": 0},
+                sample_count=capped_size,
+                splits=split_counts,
                 input_shape=input_shape,
                 task_type=str(normalized["taskType"]),
                 train_split=train_split,
@@ -502,16 +769,24 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
         except Exception:
             warnings.append("MNIST was unavailable locally, so training used FakeData instead.")
 
-    fake_transform = _build_transform_pipeline(normalized, transforms, is_training=True)
-    dataset = datasets.FakeData(
+    train_source = datasets.FakeData(
         size=256,
         image_size=(int(input_shape[0]), int(input_shape[1]), int(input_shape[2])),
         num_classes=max(int(normalized["numClasses"]), 1),
-        transform=fake_transform,
+        transform=train_transform,
     )
+    eval_source = datasets.FakeData(
+        size=256,
+        image_size=(int(input_shape[0]), int(input_shape[1]), int(input_shape[2])),
+        num_classes=max(int(normalized["numClasses"]), 1),
+        transform=eval_transform,
+    )
+    train_indices, val_indices, test_indices = _split_indices(256, split_counts, seed)
     class_names = [str(index) for index in range(max(int(normalized["numClasses"]), 1))]
     return RuntimeDatasetBundle(
-        dataset=dataset,
+        dataset=Subset(train_source, train_indices),
+        val_dataset=Subset(eval_source, val_indices) if val_indices else None,
+        test_dataset=Subset(eval_source, test_indices) if test_indices else None,
         requested_name=dataset_name,
         used_name="FakeData",
         dataset_mode="builtin",
@@ -519,7 +794,7 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
         num_classes=max(int(normalized["numClasses"]), 1),
         class_names=class_names,
         sample_count=256,
-        splits={"train": 256, "val": 0, "test": 0},
+        splits=split_counts,
         input_shape=input_shape,
         task_type=str(normalized["taskType"]),
         train_split=train_split,
@@ -527,17 +802,24 @@ def _build_builtin_runtime_dataset(ir_graph: IRGraph, normalized: Mapping[str, A
     )
 
 
-def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspection) -> RuntimeDatasetBundle:
+def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspection, seed: int) -> RuntimeDatasetBundle:
     _, _, _, Subset, datasets, transforms = _load_torch_runtime()
     root_path = Path(str(normalized["rootPath"])).expanduser()
     train_transform = _build_transform_pipeline(normalized, transforms, is_training=True)
+    eval_transform = _build_transform_pipeline(normalized, transforms, is_training=False)
     input_shape = build_dataset_input_shape(normalized) or [1, 28, 28]
 
     if inspection.resolved_split_mode == "predefined":
         train_root = root_path / "train"
         dataset = datasets.ImageFolder(root=str(train_root), transform=train_transform)
+        val_root = root_path / "val"
+        test_root = root_path / "test"
+        val_dataset = datasets.ImageFolder(root=str(val_root), transform=eval_transform) if val_root.exists() else None
+        test_dataset = datasets.ImageFolder(root=str(test_root), transform=eval_transform) if test_root.exists() else None
         return RuntimeDatasetBundle(
             dataset=dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
             requested_name=str(root_path),
             used_name="ImageFolder",
             dataset_mode="image_folder",
@@ -553,11 +835,7 @@ def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspectio
         )
 
     full_dataset = datasets.ImageFolder(root=str(root_path), transform=train_transform)
-    indices = list(range(len(full_dataset)))
-    if bool(normalized["shuffleBeforeSplit"]):
-        import random
-
-        random.Random(42).shuffle(indices)
+    eval_dataset = datasets.ImageFolder(root=str(root_path), transform=eval_transform)
 
     split_counts = compute_ratio_split_counts(
         total_count=len(full_dataset),
@@ -565,9 +843,19 @@ def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspectio
         val_ratio=float(normalized["valRatio"]),
         test_ratio=float(normalized["testRatio"]),
     )
-    train_count = split_counts["train"]
-    train_indices = indices[:train_count]
+    if bool(normalized["shuffleBeforeSplit"]):
+        train_indices, val_indices, test_indices = _split_indices(len(full_dataset), split_counts, seed)
+    else:
+        ordered_indices = list(range(len(full_dataset)))
+        train_count = split_counts["train"]
+        val_count = split_counts["val"]
+        test_count = split_counts["test"]
+        train_indices = ordered_indices[:train_count]
+        val_indices = ordered_indices[train_count : train_count + val_count]
+        test_indices = ordered_indices[train_count + val_count : train_count + val_count + test_count]
     dataset = Subset(full_dataset, train_indices)
+    val_dataset = Subset(eval_dataset, val_indices) if val_indices else None
+    test_dataset = Subset(eval_dataset, test_indices) if test_indices else None
 
     warnings = list(inspection.warnings)
     if split_counts["val"] == 0 and float(normalized["valRatio"]) > 0:
@@ -577,6 +865,8 @@ def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspectio
 
     return RuntimeDatasetBundle(
         dataset=dataset,
+        val_dataset=val_dataset,
+        test_dataset=test_dataset,
         requested_name=str(root_path),
         used_name="ImageFolder",
         dataset_mode="image_folder",
@@ -592,7 +882,7 @@ def _build_image_folder_runtime_dataset(normalized: Mapping[str, Any], inspectio
     )
 
 
-def build_runtime_dataset(ir_graph: IRGraph):
+def build_runtime_dataset(ir_graph: IRGraph, seed: int = 42):
     """Build the configured runtime dataset bundle."""
 
     components = resolve_training_components(ir_graph)
@@ -604,28 +894,30 @@ def build_runtime_dataset(ir_graph: IRGraph):
     if inspection.dataset_mode == "csv":
         raise RuntimeError("CSV runtime training is not implemented yet in this phase.")
     if inspection.dataset_mode == "builtin":
-        return _build_builtin_runtime_dataset(ir_graph, dataset_params, inspection)
+        return _build_builtin_runtime_dataset(ir_graph, dataset_params, inspection, seed)
     if inspection.dataset_mode == "image_folder":
-        return _build_image_folder_runtime_dataset(dataset_params, inspection)
+        return _build_image_folder_runtime_dataset(dataset_params, inspection, seed)
 
     raise RuntimeError(f"Unsupported dataset mode `{inspection.dataset_mode}`.")
 
 
-def build_runtime_dataloader(ir_graph: IRGraph, dataset):
+def build_runtime_dataloader(ir_graph: IRGraph, dataset, for_evaluation: bool = False, seed: int = 42):
     """Create a DataLoader from the graph params."""
 
-    _, _, DataLoader, _, _, _ = _load_torch_runtime()
+    torch, _, DataLoader, _, _, _ = _load_torch_runtime()
     components = resolve_training_components(ir_graph)
     params = normalize_dataloader_params(components.dataloader_node.params if components.dataloader_node else {})
     num_workers = int(params["numWorkers"])
 
     dataloader_kwargs: dict[str, Any] = {
         "batch_size": int(params["batchSize"]),
-        "shuffle": bool(params["shuffle"]),
+        "shuffle": False if for_evaluation else bool(params["shuffle"]),
         "num_workers": num_workers,
-        "drop_last": bool(params["dropLast"]),
+        "drop_last": False if for_evaluation else bool(params["dropLast"]),
         "pin_memory": bool(params["pinMemory"]),
     }
+    if not for_evaluation and bool(params["shuffle"]):
+        dataloader_kwargs["generator"] = torch.Generator().manual_seed(int(seed))
     if num_workers > 0:
         dataloader_kwargs["persistent_workers"] = bool(params["persistentWorkers"])
         if params["prefetchFactor"] is not None:
@@ -634,13 +926,80 @@ def build_runtime_dataloader(ir_graph: IRGraph, dataset):
     return DataLoader(dataset, **dataloader_kwargs)
 
 
+def _select_best_epoch(logs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not logs:
+        return None
+    if any(isinstance(log.get("valAccuracy"), (int, float)) for log in logs):
+        return max(
+            logs,
+            key=lambda log: float(log.get("valAccuracy") if isinstance(log.get("valAccuracy"), (int, float)) else -1.0),
+        )
+    if any(isinstance(log.get("valLoss"), (int, float)) for log in logs):
+        return min(
+            logs,
+            key=lambda log: float(log.get("valLoss") if isinstance(log.get("valLoss"), (int, float)) else float("inf")),
+        )
+    return min(logs, key=lambda log: float(log.get("loss") if isinstance(log.get("loss"), (int, float)) else float("inf")))
+
+
+def _build_evaluation_summary(
+    logs: list[dict[str, Any]],
+    primary_metrics: dict[str, object],
+    test_metrics: dict[str, object] | None,
+    class_names: list[str],
+    seed: int,
+    config_hash: str,
+    primary_split: str,
+) -> dict[str, object]:
+    best_log = _select_best_epoch(logs)
+    last_log = logs[-1] if logs else {}
+    final_train = _log_to_metric_summary(last_log)
+    final_validation = _log_to_metric_summary(last_log, "val") if any("valLoss" in log for log in logs) else None
+    best_validation = _log_to_metric_summary(best_log, "val") if best_log and "valLoss" in best_log else None
+
+    return {
+        "finalTrain": final_train,
+        "finalValidation": final_validation,
+        "finalTest": {
+            "loss": test_metrics.get("loss"),
+            "accuracy": test_metrics.get("accuracy"),
+            "precision": test_metrics.get("precision"),
+            "recall": test_metrics.get("recall"),
+            "f1": test_metrics.get("f1"),
+        }
+        if test_metrics
+        else None,
+        "bestValidation": best_validation,
+        "bestEpoch": int(best_log["epoch"]) if best_log and "epoch" in best_log else None,
+        "primarySplit": primary_split,
+        "confusionMatrix": primary_metrics.get("confusionMatrix", []),
+        "classMetrics": primary_metrics.get("classMetrics", []),
+        "macroPrecision": primary_metrics.get("macroPrecision"),
+        "macroRecall": primary_metrics.get("macroRecall"),
+        "macroF1": primary_metrics.get("macroF1"),
+        "weightedF1": primary_metrics.get("weightedF1"),
+        "sampleCount": primary_metrics.get("sampleCount", 0),
+        "classNames": class_names,
+        "seed": seed,
+        "configHash": config_hash,
+    }
+
+
 def run_training(
     ir_graph: IRGraph,
     project_name: str = "Untitled Project",
     diagnostics_payload: Any | None = None,
+    project_snapshot: dict[str, object] | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
-) -> tuple[str, list[dict[str, float | int | None]], list[str], dict[str, object] | None, dict[str, object] | None]:
+) -> tuple[
+    str,
+    list[dict[str, float | int | None]],
+    list[str],
+    dict[str, object] | None,
+    dict[str, object] | None,
+    dict[str, object] | None,
+]:
     """Execute the synchronous training loop for builtin and image-folder datasets."""
 
     torch, nn, _, _, _, _ = _load_torch_runtime()
@@ -652,19 +1011,44 @@ def run_training(
     trainer_params = components.trainer_node.params if components.trainer_node else {}
     metric_params = components.metric_node.params if components.metric_node else {}
     epochs = int(trainer_params.get("epochs", 1))
+    seed = int(trainer_params.get("seed", 42))
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     device = _resolve_device(trainer_params.get("device", "cpu"))
     started_at = datetime.now(timezone.utc)
     started_at_iso = started_at.isoformat()
     started_perf = perf_counter()
+    normalized_config = {
+        "dataset": dict(dataset_params),
+        "dataloader": dict(dataloader_params),
+        "loss": dict(loss_params),
+        "optimizer": dict(optimizer_params),
+        "trainer": {**dict(trainer_params), "seed": seed},
+        "metric": dict(metric_params),
+    }
+    config_hash = _stable_hash({"project": project_snapshot, "config": normalized_config})
 
-    dataset_bundle = build_runtime_dataset(ir_graph)
+    dataset_bundle = build_runtime_dataset(ir_graph, seed=seed)
     warnings = list(dataset_bundle.warnings)
     warnings.extend(_collect_dataloader_runtime_warnings(dataloader_params))
-    dataloader = build_runtime_dataloader(ir_graph, dataset_bundle.dataset)
+    dataloader = build_runtime_dataloader(ir_graph, dataset_bundle.dataset, seed=seed)
+    val_dataloader = (
+        build_runtime_dataloader(ir_graph, dataset_bundle.val_dataset, for_evaluation=True, seed=seed)
+        if dataset_bundle.val_dataset is not None
+        else None
+    )
+    test_dataloader = (
+        build_runtime_dataloader(ir_graph, dataset_bundle.test_dataset, for_evaluation=True, seed=seed)
+        if dataset_bundle.test_dataset is not None
+        else None
+    )
     model = build_runtime_model(ir_graph).to(device)
     criterion = build_runtime_loss(ir_graph)
     optimizer = build_runtime_optimizer(ir_graph, model)
     num_classes = dataset_bundle.num_classes or get_num_classes(ir_graph)
+    class_names = list(dataset_bundle.class_names)
+    include_metrics = components.metric_node is not None
     logs: list[dict[str, float | int | None]] = []
 
     def is_cancelled() -> bool:
@@ -676,6 +1060,7 @@ def run_training(
         list[str],
         None,
         dict[str, object],
+        None,
     ]:
         cancel_messages = [*warnings, "Training was cancelled before completion."]
         from app.services.diagnostics import build_training_insights
@@ -687,7 +1072,7 @@ def run_training(
             runtime_messages=cancel_messages,
             training_metadata=None,
         )
-        return "cancelled", logs, cancel_messages, None, insights_payload.model_dump(by_alias=True)
+        return "cancelled", logs, cancel_messages, None, insights_payload.model_dump(by_alias=True), None
 
     if is_cancelled():
         return build_cancelled_response()
@@ -696,42 +1081,45 @@ def run_training(
         if is_cancelled():
             return build_cancelled_response()
 
-        model.train()
-        running_loss = 0.0
-        running_accuracy = 0.0
-        batch_count = 0
+        train_metrics, cancelled = train_one_epoch(
+            torch,
+            nn,
+            model,
+            dataloader,
+            criterion,
+            optimizer,
+            device,
+            num_classes,
+            class_names,
+            include_metrics,
+            is_cancelled,
+        )
+        if cancelled:
+            return build_cancelled_response()
 
-        for inputs, labels in dataloader:
-            if is_cancelled():
-                return build_cancelled_response()
-
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            optimizer.zero_grad()
-            outputs = model(inputs)
-
-            if isinstance(criterion, nn.MSELoss):
-                targets = torch.nn.functional.one_hot(labels, num_classes=num_classes).float()
-                loss = criterion(outputs, targets)
-            else:
-                outputs = _normalize_classification_outputs(outputs)
-                loss = criterion(outputs, labels)
-
-            loss.backward()
-            optimizer.step()
-
-            running_loss += float(loss.item())
-            accuracy = _maybe_accuracy(components.metric_node, outputs, labels)
-            if accuracy is not None:
-                running_accuracy += accuracy
-            batch_count += 1
-
+        val_metrics = (
+            evaluate(torch, nn, model, val_dataloader, criterion, device, num_classes, class_names, include_metrics)
+            if val_dataloader is not None
+            else None
+        )
         epoch_log = {
             "epoch": epoch,
-            "loss": running_loss / max(batch_count, 1),
-            "accuracy": (running_accuracy / batch_count) if components.metric_node and batch_count else None,
+            "loss": train_metrics.get("loss"),
+            "accuracy": train_metrics.get("accuracy"),
+            "precision": train_metrics.get("precision"),
+            "recall": train_metrics.get("recall"),
+            "f1": train_metrics.get("f1"),
         }
+        if val_metrics is not None:
+            epoch_log.update(
+                {
+                    "valLoss": val_metrics.get("loss"),
+                    "valAccuracy": val_metrics.get("accuracy"),
+                    "valPrecision": val_metrics.get("precision"),
+                    "valRecall": val_metrics.get("recall"),
+                    "valF1": val_metrics.get("f1"),
+                }
+            )
         logs.append(epoch_log)
         if progress_callback:
             progress_callback(
@@ -745,7 +1133,28 @@ def run_training(
             )
 
     completed_at_iso = datetime.now(timezone.utc).isoformat()
+    primary_split = "validation" if val_dataloader is not None else "train"
+    primary_metrics = (
+        evaluate(torch, nn, model, val_dataloader, criterion, device, num_classes, class_names, include_metrics)
+        if val_dataloader is not None
+        else evaluate(torch, nn, model, dataloader, criterion, device, num_classes, class_names, include_metrics)
+    )
+    test_metrics = (
+        evaluate(torch, nn, model, test_dataloader, criterion, device, num_classes, class_names, include_metrics)
+        if test_dataloader is not None
+        else None
+    )
+    evaluation_payload = _build_evaluation_summary(
+        logs,
+        primary_metrics,
+        test_metrics,
+        class_names,
+        seed,
+        config_hash,
+        primary_split,
+    )
     metadata = TrainingRunMetadataPayload(
+        run_id="",
         project_name=project_name,
         requested_dataset_name=dataset_bundle.requested_name,
         dataset_used=dataset_bundle.used_name,
@@ -802,8 +1211,12 @@ def run_training(
             warnings,
             diagnostics=diagnostics_payload.model_dump(by_alias=True) if diagnostics_payload is not None else None,
             insights=insights_payload.model_dump(by_alias=True),
+            evaluation=evaluation_payload,
+            project_snapshot=project_snapshot,
+            normalized_config=normalized_config,
+            runtime_environment=_runtime_environment(torch),
         )
     except Exception as exc:
         warnings.append(f"Training artifacts could not be fully persisted: {exc}")
 
-    return "completed", logs, warnings, asdict(metadata), insights_payload.model_dump(by_alias=True)
+    return "completed", logs, warnings, asdict(metadata), insights_payload.model_dump(by_alias=True), evaluation_payload

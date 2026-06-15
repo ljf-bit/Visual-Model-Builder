@@ -1117,8 +1117,60 @@ button {
 
 .training-chart-line.loss { stroke: #38bdf8; }
 .training-chart-line.accuracy { stroke: #22c55e; }
+.training-chart-line.validation {
+  stroke: #f59e0b;
+  stroke-dasharray: 5 4;
+}
 .training-chart-dot.loss { fill: #38bdf8; }
 .training-chart-dot.accuracy { fill: #22c55e; }
+.training-chart-dot.validation { fill: #f59e0b; }
+
+.training-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--spacing-xs);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.training-chart-legend span {
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.training-chart-legend .loss { background: #38bdf8; }
+.training-chart-legend .accuracy { background: #22c55e; }
+.training-chart-legend .validation { background: #f59e0b; }
+
+.training-evaluation {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.training-confusion-matrix {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--spacing-sm);
+}
+
+.training-confusion-cell {
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #38bdf8;
+  color: #031018;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.training-class-metrics-table {
+  min-width: 620px;
+}
 
 .training-panel-log {
   min-height: 0;
@@ -1191,6 +1243,29 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
+}
+
+.experiment-compare-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.experiment-compare-actions label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.experiment-compare-actions select {
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  padding: 0 var(--spacing-sm);
 }
 
 .experiment-compare-copy {

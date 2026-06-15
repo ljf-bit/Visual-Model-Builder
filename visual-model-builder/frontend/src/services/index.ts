@@ -10,5 +10,7 @@ export {
   createTrainingJob,
   getTrainingJob,
   cancelTrainingJob,
+  getTrainingRuns,
+  getTrainingRun,
   inspectDataset,
 } from './api';

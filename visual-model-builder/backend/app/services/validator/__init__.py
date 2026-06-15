@@ -10,6 +10,8 @@ from app.services.training import (
     resolve_training_components,
 )
 
+SUPPORTED_METRICS = {"Accuracy", "Precision", "Recall", "F1", "AllClassificationMetrics"}
+
 
 def _append_unique(items: list[str], message: str) -> None:
     if message and message not in items:
@@ -127,8 +129,12 @@ def _validate_training_params(node, node_errors: dict[str, list[str]], warnings:
         if params.get("device") not in {"cpu", "auto"}:
             _add_node_error(node_errors, node.node_id, "Trainer `device` must be `cpu` or `auto`.")
     elif node.op == "Metric":
-        if params.get("metricType") != "Accuracy":
-            _add_node_error(node_errors, node.node_id, "Metric `metricType` must be `Accuracy` in the current phase.")
+        if params.get("metricType") not in SUPPORTED_METRICS:
+            _add_node_error(
+                node_errors,
+                node.node_id,
+                "Metric `metricType` must be one of Accuracy, Precision, Recall, F1, or AllClassificationMetrics.",
+            )
 
 
 def _validate_common_graph(

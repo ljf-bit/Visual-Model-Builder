@@ -22,6 +22,37 @@ def normalize_classification_outputs(outputs):
     while outputs.ndim > 2 and outputs.shape[-1] == 1:
         outputs = outputs.squeeze(-1)
     return outputs
+
+
+def compute_classification_metrics(predictions, labels, num_classes):
+    confusion = [[0 for _ in range(num_classes)] for _ in range(num_classes)]
+    for target, predicted in zip(labels, predictions):
+        if 0 <= target < num_classes and 0 <= predicted < num_classes:
+            confusion[target][predicted] += 1
+
+    total = sum(sum(row) for row in confusion)
+    correct = sum(confusion[index][index] for index in range(num_classes))
+    accuracy = correct / total if total else None
+    precision_sum = 0.0
+    recall_sum = 0.0
+    f1_sum = 0.0
+    for class_index in range(num_classes):
+        tp = confusion[class_index][class_index]
+        fp = sum(confusion[row][class_index] for row in range(num_classes) if row != class_index)
+        fn = sum(confusion[class_index][col] for col in range(num_classes) if col != class_index)
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        precision_sum += precision
+        recall_sum += recall
+        f1_sum += f1
+    return {
+        "accuracy": accuracy,
+        "precision": precision_sum / max(num_classes, 1),
+        "recall": recall_sum / max(num_classes, 1),
+        "f1": f1_sum / max(num_classes, 1),
+        "confusionMatrix": confusion,
+    }
 """.strip()
 
 
@@ -216,7 +247,7 @@ def generate_training_code(ir_graph: IRGraph) -> str:
     momentum = float(optimizer_params.get("momentum", 0.0))
     epochs = int(trainer_params.get("epochs", 1))
     device_setting = str(trainer_params.get("device", "cpu"))
-    metric_enabled = metric_params.get("metricType") == "Accuracy"
+    metric_enabled = components.metric_node is not None
 
     model_code = _generate_model_class(ir_graph)
     transform_code = _transform_builder_block(dataset_params)
@@ -236,17 +267,19 @@ def generate_training_code(ir_graph: IRGraph) -> str:
         )
 
     metric_block = ""
-    metric_log_line = "epoch_accuracy = None"
+    metric_log_line = (
+        'epoch_metrics = {"accuracy": None, "precision": None, "recall": None, "f1": None}'
+    )
     if metric_enabled:
-        metric_block = "running_correct = 0\nrunning_total = 0\n"
-        metric_log_line = "epoch_accuracy = running_correct / running_total if running_total else 0.0"
+        metric_block = "all_predictions = []\nall_labels = []\n"
+        metric_log_line = f"epoch_metrics = compute_classification_metrics(all_predictions, all_labels, {num_classes})"
 
     accuracy_update = ""
     if metric_enabled:
         accuracy_update = (
             "predictions = outputs.argmax(dim=1)\n"
-            "running_correct += (predictions == labels).sum().item()\n"
-            "running_total += labels.size(0)\n"
+            "all_predictions.extend(int(value) for value in predictions.detach().cpu().tolist())\n"
+            "all_labels.extend(int(value) for value in labels.detach().cpu().tolist())\n"
         )
 
     if loss_type == "MSELoss":
@@ -295,8 +328,15 @@ def train():
 
         epoch_loss = running_loss / max(batch_count, 1)
         {metric_log_line}
-        history.append({{"epoch": epoch, "loss": epoch_loss, "accuracy": epoch_accuracy}})
-        print(f"Epoch {{epoch}}: loss={{epoch_loss:.4f}}" + (f", accuracy={{epoch_accuracy:.4f}}" if epoch_accuracy is not None else ""))
+        history.append({{
+            "epoch": epoch,
+            "loss": epoch_loss,
+            "accuracy": epoch_metrics["accuracy"],
+            "precision": epoch_metrics["precision"],
+            "recall": epoch_metrics["recall"],
+            "f1": epoch_metrics["f1"],
+        }})
+        print(f"Epoch {{epoch}}: loss={{epoch_loss:.4f}}" + (f", accuracy={{epoch_metrics['accuracy']:.4f}}" if epoch_metrics["accuracy"] is not None else ""))
 
     return history
 

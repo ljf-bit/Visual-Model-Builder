@@ -1,5 +1,7 @@
 """Response schemas for API endpoints."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -65,11 +67,68 @@ class TrainingEpochLog(BaseModel):
     epoch: int
     loss: float
     accuracy: float | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+    val_loss: float | None = Field(default=None, alias="valLoss")
+    val_accuracy: float | None = Field(default=None, alias="valAccuracy")
+    val_precision: float | None = Field(default=None, alias="valPrecision")
+    val_recall: float | None = Field(default=None, alias="valRecall")
+    val_f1: float | None = Field(default=None, alias="valF1")
+
+    model_config = {"populate_by_name": True}
+
+
+class TrainingMetricSnapshot(BaseModel):
+    """Compact metric snapshot for one split."""
+
+    loss: float | None = None
+    accuracy: float | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+
+
+class TrainingClassMetric(BaseModel):
+    """Per-class classification metrics."""
+
+    class_index: int = Field(0, alias="classIndex")
+    class_name: str = Field("", alias="className")
+    support: int = 0
+    precision: float = 0.0
+    recall: float = 0.0
+    f1: float = 0.0
+
+    model_config = {"populate_by_name": True}
+
+
+class TrainingEvaluationSummary(BaseModel):
+    """Post-run evaluation metrics and reproducibility metadata."""
+
+    final_train: TrainingMetricSnapshot = Field(default_factory=TrainingMetricSnapshot, alias="finalTrain")
+    final_validation: TrainingMetricSnapshot | None = Field(default=None, alias="finalValidation")
+    final_test: TrainingMetricSnapshot | None = Field(default=None, alias="finalTest")
+    best_validation: TrainingMetricSnapshot | None = Field(default=None, alias="bestValidation")
+    best_epoch: int | None = Field(default=None, alias="bestEpoch")
+    primary_split: str = Field("train", alias="primarySplit")
+    confusion_matrix: list[list[int]] = Field(default_factory=list, alias="confusionMatrix")
+    class_metrics: list[TrainingClassMetric] = Field(default_factory=list, alias="classMetrics")
+    macro_precision: float | None = Field(default=None, alias="macroPrecision")
+    macro_recall: float | None = Field(default=None, alias="macroRecall")
+    macro_f1: float | None = Field(default=None, alias="macroF1")
+    weighted_f1: float | None = Field(default=None, alias="weightedF1")
+    sample_count: int = Field(0, alias="sampleCount")
+    class_names: list[str] = Field(default_factory=list, alias="classNames")
+    seed: int = 42
+    config_hash: str = Field("", alias="configHash")
+
+    model_config = {"populate_by_name": True}
 
 
 class TrainingRunMetadata(BaseModel):
     """Serializable training metadata and artifact locations."""
 
+    run_id: str = Field("", alias="runId")
     project_name: str = Field("", alias="projectName")
     requested_dataset_name: str = Field("", alias="requestedDatasetName")
     dataset_used: str = Field("", alias="datasetUsed")
@@ -198,6 +257,7 @@ class RunTrainingResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     diagnostics: TrainingDiagnosticsResponse | None = None
     insights: TrainingInsightsResponse | None = None
+    evaluation: TrainingEvaluationSummary | None = None
     training_metadata: TrainingRunMetadata | None = Field(None, alias="trainingMetadata")
 
     model_config = {"populate_by_name": True}
@@ -215,8 +275,49 @@ class TrainingJobResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     diagnostics: TrainingDiagnosticsResponse | None = None
     insights: TrainingInsightsResponse | None = None
+    evaluation: TrainingEvaluationSummary | None = None
     training_metadata: TrainingRunMetadata | None = Field(None, alias="trainingMetadata")
     created_at: str = Field("", alias="createdAt")
     updated_at: str = Field("", alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class TrainingRunRecord(BaseModel):
+    """One persisted run listed by /training-runs."""
+
+    run_id: str = Field("", alias="runId")
+    ok: bool = False
+    status: str = ""
+    project_name: str = Field("", alias="projectName")
+    created_at: str = Field("", alias="createdAt")
+    completed_at: str = Field("", alias="completedAt")
+    dataset_used: str = Field("", alias="datasetUsed")
+    dataset_mode: str = Field("", alias="datasetMode")
+    duration_seconds: float | None = Field(default=None, alias="durationSeconds")
+    final_loss: float | None = Field(default=None, alias="finalLoss")
+    final_accuracy: float | None = Field(default=None, alias="finalAccuracy")
+    macro_f1: float | None = Field(default=None, alias="macroF1")
+    weighted_f1: float | None = Field(default=None, alias="weightedF1")
+    summary_path: str = Field("", alias="summaryPath")
+
+    model_config = {"populate_by_name": True}
+
+
+class TrainingRunListResponse(BaseModel):
+    """Response from /training-runs."""
+
+    ok: bool = True
+    runs: list[TrainingRunRecord] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
+
+
+class TrainingRunDetailResponse(BaseModel):
+    """Response from /training-runs/{run_id}."""
+
+    ok: bool = True
+    run_id: str = Field("", alias="runId")
+    summary: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"populate_by_name": True}

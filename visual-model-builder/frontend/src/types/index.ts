@@ -160,10 +160,55 @@ export interface TrainingEpochLog {
   epoch: number;
   loss: number;
   accuracy: number | null;
+  precision?: number | null;
+  recall?: number | null;
+  f1?: number | null;
+  valLoss?: number | null;
+  valAccuracy?: number | null;
+  valPrecision?: number | null;
+  valRecall?: number | null;
+  valF1?: number | null;
+}
+
+export interface TrainingMetricSnapshot {
+  loss: number | null;
+  accuracy: number | null;
+  precision: number | null;
+  recall: number | null;
+  f1: number | null;
+}
+
+export interface TrainingClassMetric {
+  classIndex: number;
+  className: string;
+  support: number;
+  precision: number;
+  recall: number;
+  f1: number;
+}
+
+export interface TrainingEvaluationSummary {
+  finalTrain: TrainingMetricSnapshot;
+  finalValidation: TrainingMetricSnapshot | null;
+  finalTest: TrainingMetricSnapshot | null;
+  bestValidation: TrainingMetricSnapshot | null;
+  bestEpoch: number | null;
+  primarySplit: string;
+  confusionMatrix: number[][];
+  classMetrics: TrainingClassMetric[];
+  macroPrecision: number | null;
+  macroRecall: number | null;
+  macroF1: number | null;
+  weightedF1: number | null;
+  sampleCount: number;
+  classNames: string[];
+  seed: number;
+  configHash: string;
 }
 
 /** Saved metadata and artifact locations for one training run */
 export interface TrainingRunMetadata {
+  runId: string;
   projectName: string;
   requestedDatasetName: string;
   datasetUsed: string;
@@ -274,6 +319,7 @@ export interface RunTrainingResponse {
   errors: string[];
   diagnostics?: TrainingDiagnosticsResponse | null;
   insights?: TrainingInsightsResponse | null;
+  evaluation?: TrainingEvaluationSummary | null;
   trainingMetadata?: TrainingRunMetadata | null;
 }
 
@@ -291,9 +337,38 @@ export interface TrainingJobResponse {
   errors: string[];
   diagnostics?: TrainingDiagnosticsResponse | null;
   insights?: TrainingInsightsResponse | null;
+  evaluation?: TrainingEvaluationSummary | null;
   trainingMetadata?: TrainingRunMetadata | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TrainingRunRecord {
+  runId: string;
+  ok: boolean;
+  status: string;
+  projectName: string;
+  createdAt: string;
+  completedAt: string;
+  datasetUsed: string;
+  datasetMode: string;
+  durationSeconds: number | null;
+  finalLoss: number | null;
+  finalAccuracy: number | null;
+  macroF1: number | null;
+  weightedF1: number | null;
+  summaryPath: string;
+}
+
+export interface TrainingRunListResponse {
+  ok: boolean;
+  runs: TrainingRunRecord[];
+}
+
+export interface TrainingRunDetailResponse {
+  ok: boolean;
+  runId: string;
+  summary: Record<string, unknown>;
 }
 
 // ============================================================
@@ -331,8 +406,12 @@ export interface ExperimentMetricSummary {
   firstLoss: number | null;
   finalLoss: number | null;
   bestLoss: number | null;
+  finalValLoss: number | null;
   finalAccuracy: number | null;
   bestAccuracy: number | null;
+  finalValAccuracy: number | null;
+  macroF1: number | null;
+  weightedF1: number | null;
   epochCount: number;
 }
 
@@ -352,6 +431,8 @@ export interface ExperimentRecord {
   graphSignature: string;
   metrics: ExperimentMetricSummary;
   logs: TrainingEpochLog[];
+  evaluation?: TrainingEvaluationSummary | null;
+  source?: 'local' | 'backend';
   diagnostics?: TrainingDiagnosticsResponse | null;
   insights?: TrainingInsightsResponse | null;
   trainingMetadata?: TrainingRunMetadata | null;

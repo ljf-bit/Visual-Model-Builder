@@ -26,6 +26,7 @@ function jobToTrainingResult(job: TrainingJobResponse): RunTrainingResponse {
     errors: job.errors,
     diagnostics: job.diagnostics ?? null,
     insights: job.insights ?? null,
+    evaluation: job.evaluation ?? null,
     trainingMetadata: job.trainingMetadata ?? null,
   };
 }
@@ -133,11 +134,12 @@ const TrainingPanelV2: React.FC = () => {
           ok: false,
           status: 'request_failed',
           logs: [],
-          errors: [message],
-          diagnostics: currentDiagnostics ?? null,
-          insights: null,
-          trainingMetadata: null,
-        });
+        errors: [message],
+        diagnostics: currentDiagnostics ?? null,
+        insights: null,
+        evaluation: null,
+        trainingMetadata: null,
+      });
         setIsRunning(false);
         setActiveView('analysis');
       }
@@ -176,6 +178,7 @@ const TrainingPanelV2: React.FC = () => {
         errors: [message],
         diagnostics: null,
         insights: null,
+        evaluation: null,
         trainingMetadata: null,
       });
       setIsRunning(false);
@@ -201,6 +204,7 @@ const TrainingPanelV2: React.FC = () => {
       trainingMetadata.projectName || project.metadata.name,
       trainingResult,
       trainingMetadata,
+      trainingResult.evaluation ?? null,
       lossPoints,
       accuracyPoints,
       currentDiagnostics ?? null,

@@ -24,16 +24,26 @@ function write(records: ExperimentRecord[]) {
 
 function summarizeMetrics(result: RunTrainingResponse): ExperimentMetricSummary {
   const losses = result.logs.map((log) => log.loss).filter(Number.isFinite);
+  const valLosses = result.logs
+    .map((log) => log.valLoss)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
   const accuracies = result.logs
     .map((log) => log.accuracy)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const valAccuracies = result.logs
+    .map((log) => log.valAccuracy)
     .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
 
   return {
     firstLoss: losses[0] ?? null,
     finalLoss: losses[losses.length - 1] ?? null,
     bestLoss: losses.length ? Math.min(...losses) : null,
+    finalValLoss: valLosses[valLosses.length - 1] ?? null,
     finalAccuracy: accuracies[accuracies.length - 1] ?? null,
     bestAccuracy: accuracies.length ? Math.max(...accuracies) : null,
+    finalValAccuracy: valAccuracies[valAccuracies.length - 1] ?? null,
+    macroF1: result.evaluation?.macroF1 ?? null,
+    weightedF1: result.evaluation?.weightedF1 ?? null,
     epochCount: result.logs.length,
   };
 }
@@ -91,6 +101,8 @@ export function createExperimentRecord(project: ProjectGraph, result: RunTrainin
     graphSignature: buildGraphSignature(project),
     metrics: summarizeMetrics(result),
     logs: result.logs,
+    evaluation: result.evaluation ?? null,
+    source: 'local',
     diagnostics,
     insights: result.insights ?? null,
     trainingMetadata: metadata,

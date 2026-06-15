@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.training import compute_classification_metrics
 
 client = TestClient(app)
 
@@ -280,7 +281,13 @@ def test_run_training_returns_epoch_metrics(monkeypatch):
     assert data["diagnostics"]["ok"] is True
     assert "summary" in data["diagnostics"]
     assert "trendSummary" in data["insights"]
+    assert data["evaluation"]["seed"] == 42
+    assert data["evaluation"]["configHash"]
+    assert data["evaluation"]["confusionMatrix"]
+    assert data["evaluation"]["classMetrics"]
+    assert data["evaluation"]["finalValidation"]["loss"] is not None
     assert data["trainingMetadata"]["projectName"] == "Phase 2 Training Example"
+    assert data["trainingMetadata"]["runId"]
     assert data["trainingMetadata"]["datasetUsed"] == "FakeData"
     assert Path(data["trainingMetadata"]["weightsPath"]).exists()
     assert Path(data["trainingMetadata"]["logsPath"]).exists()
@@ -288,6 +295,10 @@ def test_run_training_returns_epoch_metrics(monkeypatch):
     summary_payload = json.loads(Path(data["trainingMetadata"]["summaryPath"]).read_text(encoding="utf-8"))
     assert summary_payload["diagnostics"]["summary"]
     assert summary_payload["insights"]["qualitySummary"]
+    assert summary_payload["evaluation"]["macroF1"] is not None
+    assert summary_payload["normalizedConfig"]["trainer"]["seed"] == 42
+    assert summary_payload["projectSnapshot"]["metadata"]["name"] == "Phase 2 Training Example"
+    assert summary_payload["runtimeEnvironment"]["pythonVersion"]
 
 
 def test_run_training_accepts_sample_relative_flatten_dimensions(monkeypatch):
@@ -414,8 +425,48 @@ def test_training_job_lifecycle_completes(monkeypatch):
     assert data["ok"] is True
     assert data["progress"] == 1.0
     assert len(data["logs"]) == 1
+    assert data["evaluation"]["macroF1"] is not None
     assert data["trainingMetadata"]["projectName"] == "Phase 2 Training Example"
     assert Path(data["trainingMetadata"]["weightsPath"]).exists()
+
+
+def test_compute_classification_metrics_reports_macro_and_confusion_matrix():
+    metrics = compute_classification_metrics(
+        predictions=[0, 1, 1, 1],
+        labels=[0, 0, 1, 1],
+        num_classes=2,
+        class_names=["negative", "positive"],
+    )
+
+    assert metrics["accuracy"] == 0.75
+    assert metrics["confusionMatrix"] == [[1, 1], [0, 2]]
+    assert metrics["classMetrics"][0]["className"] == "negative"
+    assert metrics["macroF1"] > 0
+    assert metrics["weightedF1"] > 0
+
+
+def test_training_runs_api_lists_and_loads_persisted_runs(monkeypatch):
+    runs_dir = Path(__file__).resolve().parents[2] / ".test_training_runs" / "run_history"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("VMB_TRAINING_RUNS_DIR", str(runs_dir))
+
+    run_response = client.post("/run-training", json=build_phase2_payload())
+    assert run_response.status_code == 200
+    run_data = run_response.json()
+    run_id = run_data["trainingMetadata"]["runId"]
+
+    list_response = client.get("/training-runs")
+    assert list_response.status_code == 200
+    list_data = list_response.json()
+    assert list_data["ok"] is True
+    assert any(record["runId"] == run_id for record in list_data["runs"])
+    assert list_data["runs"][0]["macroF1"] is not None
+
+    detail_response = client.get(f"/training-runs/{run_id}")
+    assert detail_response.status_code == 200
+    detail_data = detail_response.json()
+    assert detail_data["runId"] == run_id
+    assert detail_data["summary"]["evaluation"]["configHash"]
 
 
 def test_training_job_fails_when_diagnostics_fail():
