@@ -1,10 +1,10 @@
 # Visual Model Builder
 
-Visual Model Builder 是一个面向机器学习学习者和作品集展示的可视化建模工作台。用户可以通过拖拽节点搭建神经网络、查看张量 shape 推导、生成 PyTorch 代码，并把 Dataset、DataLoader、Loss、Optimizer、Trainer、Metric 串成可运行的训练流程。
+Visual Model Builder 是一个面向机器学习学习者的可视化建模工作台。用户可以通过拖拽节点搭建神经网络、查看张量 shape 推导、生成 PyTorch 代码，并把 Dataset、DataLoader、Loss、Optimizer、Trainer、Metric 串成可运行的训练流程。
 
-项目定位是“产品级 ML 可视化工具 demo”：前端强调专业工作台质感，后端提供结构化校验、代码生成、数据集 inspection 和任务式训练 API，适合作为简历项目展示工程完整度。
+项目定位是“产品级 ML 可视化工具 demo”：前端强调专业工作台质感，后端提供结构化校验、代码生成、数据集 inspection 和任务式训练 API，用于演示端到端可视化训练流程。
 
-## Portfolio Highlights
+## Feature Highlights
 
 - 可视化建模：基于 React Flow 的节点画布，支持模型节点、数据节点和训练节点混合编排。
 - Shape inference：后端按拓扑顺序推导每个节点的输入/输出 shape，并把错误映射回节点。
@@ -143,10 +143,6 @@ Backend:
 cd backend
 python -m pytest app/tests -q
 ```
-
-## Resume Description
-
-Visual Model Builder: built a full-stack machine learning visual workbench with React, React Flow, Zustand, FastAPI and PyTorch. Implemented graph validation, tensor shape inference, PyTorch code generation, dataset inspection, asynchronous training jobs with progress polling/cancellation, and a polished dual-theme product UI.
 
 ## Roadmap
 
