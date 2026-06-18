@@ -917,6 +917,11 @@ button {
   transition: width var(--transition-normal);
 }
 
+.training-panel-progress.running span {
+  min-width: 4%;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+}
+
 .training-panel-diagnostics-banner,
 .training-panel-evidence,
 .training-chart-card,

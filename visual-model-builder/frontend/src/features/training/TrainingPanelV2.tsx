@@ -94,6 +94,7 @@ const TrainingPanelV2: React.FC = () => {
       ? t('training.diagnosticsPending')
       : t('training.diagnosticsMissing');
   const canSaveResults = Boolean(trainingResult?.ok && trainingMetadata && trainingResult.logs.length > 0);
+  const visibleJobProgress = isRunning && jobProgress === 0 ? 0.04 : jobProgress;
 
   const persistTerminalJob = useCallback((job: TrainingJobResponse) => {
     const result = jobToTrainingResult(job);
@@ -156,8 +157,20 @@ const TrainingPanelV2: React.FC = () => {
   const handleRunTraining = async () => {
     try {
       setIsRunning(true);
+      setActiveView('status');
+      setActiveJobId(null);
       setCancelRequested(false);
       setJobProgress(0);
+      setTrainingResult({
+        ok: false,
+        status: 'requesting',
+        logs: [],
+        errors: [],
+        diagnostics: currentDiagnostics ?? null,
+        insights: null,
+        evaluation: null,
+        trainingMetadata: null,
+      });
       activeJobProjectRef.current = project;
       const job = await createTrainingJob(project);
       setActiveJobId(job.jobId);
@@ -282,8 +295,8 @@ const TrainingPanelV2: React.FC = () => {
           <span>{t('training.readiness')}</span>
           <strong>{readinessLabel}</strong>
         </div>
-        <div className="training-panel-progress" aria-label={t('training.progressLabel')}>
-          <span style={{ width: `${Math.round(jobProgress * 100)}%` }} />
+        <div className={`training-panel-progress ${isRunning ? 'running' : ''}`} aria-label={t('training.progressLabel')}>
+          <span style={{ width: `${Math.round(visibleJobProgress * 100)}%` }} />
         </div>
         <div className="training-panel-tabs" role="tablist" aria-label={t('training.viewsLabel')}>
           {(['curves', 'status', 'logs', 'analysis', 'compare'] as const).map((view) => (
